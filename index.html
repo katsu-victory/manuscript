@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academia AI Pro - 論文作成支援アプリ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .markdown-body p { margin-bottom: 0.75em; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 0.75em; }
+        .markdown-body ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 0.75em; }
+        .markdown-body h3 { font-size: 1.1em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; }
+        .markdown-body a { color: #2563eb; text-decoration: underline; }
+        
+        .loader {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 16px; height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        @keyframes fadeOut { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+        .saved-indicator { animation: fadeOut 2s forwards; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans h-screen flex overflow-hidden">
+
+    <div id="toast-container" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Sidebar (Left) -->
+    <aside class="w-64 bg-gray-900 text-gray-300 flex flex-col transition-all duration-300 z-20 flex-shrink-0 hidden md:flex">
+        <div class="p-4 flex items-center justify-between text-white border-b border-gray-800">
+            <div class="flex items-center gap-2">
+                <i data-lucide="book-open" class="text-blue-400"></i>
+                <h1 class="font-bold tracking-wider">Academia AI</h1>
+            </div>
+            <span id="auto-save-status" class="text-[10px] text-emerald-400 opacity-0 transition-opacity"><i data-lucide="check" class="inline w-3 h-3"></i> Saved</span>
+        </div>
+        
+        <div class="p-3 border-b border-gray-800 bg-gray-800/50">
+            <input type="text" id="doc-title" placeholder="論文タイトル" class="w-full bg-transparent text-sm font-bold text-white border-none focus:ring-0 outline-none placeholder-gray-500" value="未設定の論文">
+        </div>
+
+        <div class="flex-1 overflow-y-auto">
+            <div class="p-2">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider px-2 mt-2 mb-1">論文構成</p>
+                <nav id="section-nav" class="space-y-0.5"></nav>
+            </div>
+
+            <div class="p-2 border-t border-gray-800">
+                <div class="flex items-center justify-between px-2 mt-2 mb-1">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wider">参考資料・データ</p>
+                    <button onclick="openRefModal()" class="text-gray-400 hover:text-white" title="資料を追加"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                </div>
+                <div id="ref-list" class="space-y-1 px-1"></div>
+                <p id="ref-empty-state" class="text-xs text-gray-600 px-2 py-2 text-center italic">資料はありません</p>
+            </div>
+        </div>
+        
+        <div class="p-3 border-t border-gray-800 space-y-2 bg-gray-900">
+            <button onclick="openRuleModal()" class="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 p-2 rounded text-xs transition-colors relative">
+                <i data-lucide="file-cog" class="w-4 h-4"></i>
+                投稿規定の設定
+                <span id="sidebar-rule-badge" class="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full hidden"></span>
+            </button>
+            <button id="export-btn" class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded text-xs transition-colors">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                マークダウン出力
+            </button>
+            <div class="flex justify-between text-[10px] text-gray-500 px-1 pt-1">
+                <button onclick="clearAllData()" class="hover:text-red-400 underline">全データクリア</button>
+                <span id="total-word-count">計 0文字</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Editor Area -->
+    <main class="flex-1 flex flex-col min-w-0 bg-white shadow-xl z-10 relative">
+        <div class="md:hidden flex items-center justify-between p-4 bg-gray-900 text-white">
+            <div class="flex items-center gap-2">
+                <i data-lucide="book-open" class="text-blue-400 w-5 h-5"></i>
+                <h1 class="font-bold">Academia AI</h1>
+            </div>
+            <button id="mobile-menu-btn" class="p-1 hover:bg-gray-800 rounded"><i data-lucide="menu"></i></button>
+        </div>
+
+        <header class="h-14 border-b border-gray-200 flex items-center justify-between px-6 bg-white flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <h2 id="current-section-title" class="text-lg font-bold text-gray-800">Abstract</h2>
+                <span id="rule-badge" class="hidden text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold">規定適用中</span>
+                <span id="ref-badge" class="hidden text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded border border-blue-200 font-bold">資料参照中</span>
+            </div>
+            <span id="word-count" class="text-xs text-gray-500 font-mono">0 文字</span>
+        </header>
+
+        <div class="flex-1 overflow-auto flex flex-col relative">
+            <!-- 共通ツールバー -->
+            <div id="common-toolbar" class="p-3 border-b border-gray-100 bg-gray-50/80 flex flex-wrap gap-2 items-center sticky top-0 z-10 backdrop-blur-sm">
+                
+                <div class="flex bg-white border border-gray-200 rounded-md shadow-sm overflow-hidden">
+                    <button onclick="applyAiAction('proofread')" class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition border-r border-gray-200" title="文法チェック・自然な日本語に修正">
+                        <i data-lucide="check-circle" class="w-3.5 h-3.5 text-gray-500"></i> 推敲
+                    </button>
+                    <button onclick="applyAiAction('academic')" class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition border-r border-gray-200" title="学術的でフォーマルな表現に変換">
+                        <i data-lucide="graduation-cap" class="w-3.5 h-3.5 text-gray-500"></i> 学術的変換
+                    </button>
+                    <button onclick="applyAiAction('expand')" class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition" title="論理を補強し内容を膨らませる">
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-gray-500"></i> 拡張
+                    </button>
+                </div>
+                
+                <button onclick="applyAiAction('bullet-to-text')" class="text-xs flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-md transition border border-indigo-200 shadow-sm font-medium" title="メモや箇条書きから、学術的な段落を自動生成します">
+                    <i data-lucide="list-tree" class="w-3.5 h-3.5"></i> 箇条書きから生成
+                </button>
+
+                <!-- 規定適用 -->
+                <button onclick="applyAiAction('apply-rule')" id="btn-apply-rule" class="text-xs flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-400 px-3 py-1.5 rounded-md transition border border-gray-200 shadow-sm" title="投稿規定を設定すると有効になります">
+                    <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> 規定に合わせて調整
+                </button>
+
+                <!-- CSV -->
+                <button onclick="openCsvModal()" class="text-xs flex items-center gap-1.5 bg-white hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md transition border border-gray-200 shadow-sm ml-auto">
+                    <i data-lucide="table" class="w-3.5 h-3.5 text-blue-500"></i> CSV表作成
+                </button>
+            </div>
+
+            <!-- セクション固有の特別ツールバー（Title Page, Cover Letter用） -->
+            <div id="special-toolbar" class="hidden p-3 border-b border-indigo-100 bg-indigo-50/80 flex flex-wrap gap-2 items-center sticky top-12 z-10 backdrop-blur-sm">
+                <!-- Cover Letter用のボタン -->
+                <button id="btn-generate-cover" onclick="generateCoverLetter()" class="hidden text-xs flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition shadow-sm font-bold w-full justify-center">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i> 論文全体からカバーレターを自動生成する
+                </button>
+                <!-- Title Page用のボタン -->
+                <button id="btn-template-title" onclick="insertTitleTemplate()" class="hidden text-xs flex items-center gap-1.5 bg-white hover:bg-gray-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-md transition shadow-sm font-medium">
+                    <i data-lucide="layout-template" class="w-4 h-4"></i> タイトルページのテンプレートを挿入
+                </button>
+            </div>
+
+            <textarea id="editor-textarea" class="flex-1 w-full p-6 resize-none border-none outline-none text-gray-800 text-lg leading-loose placeholder-gray-300 bg-white" placeholder="ここにテキストを入力..."></textarea>
+        </div>
+    </main>
+
+    <!-- AI Assistant Panel (Right) -->
+    <aside class="w-96 bg-gray-50 border-l border-gray-200 flex flex-col flex-shrink-0 hidden lg:flex relative">
+        <div class="h-14 border-b border-gray-200 flex items-center justify-between px-4 bg-white flex-shrink-0">
+            <div class="flex items-center gap-2 text-indigo-700">
+                <i data-lucide="sparkles" class="w-5 h-5"></i>
+                <h2 class="font-bold text-sm">研究AIアシスタント</h2>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+                <label class="flex items-center gap-1 cursor-pointer" title="最新の文献や情報をウェブから検索します">
+                    <input type="checkbox" id="use-search-toggle" class="rounded text-indigo-600 focus:ring-indigo-500" checked>
+                    <span class="text-gray-600">Web検索</span>
+                </label>
+            </div>
+        </div>
+
+        <div id="chat-history" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
+            <div class="flex gap-3">
+                <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 text-indigo-600"><i data-lucide="bot" class="w-4 h-4"></i></div>
+                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-none p-3 text-sm text-gray-700 shadow-sm">
+                    <p class="mb-2">論文執筆をサポートします。左のサイドバーから「参考資料」を追加すると、その内容を踏まえた文章生成や議論が可能になります。</p>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button onclick="setChatInput('この論文の構成案（アウトライン）を作成して')" class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full hover:bg-indigo-100 transition border border-indigo-100">構成案の作成</button>
+                        <button onclick="setChatInput('参考資料の内容を踏まえて、この結果から言える考察のポイントを3つ挙げて')" class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full hover:bg-indigo-100 transition border border-indigo-100">資料に基づく考察提案</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 bg-white border-t border-gray-200 flex-shrink-0">
+            <div id="ai-loading" class="hidden flex items-center justify-center gap-2 text-indigo-600 text-xs mb-2">
+                <div class="loader"></div><span>推論・検索中...</span>
+            </div>
+            <form id="chat-form" class="relative flex items-end gap-2">
+                <textarea id="chat-input" rows="1" class="w-full resize-none bg-gray-100 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-lg p-2.5 text-sm transition-all shadow-inner max-h-32" placeholder="質問、調査依頼..."></textarea>
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-2.5 flex-shrink-0 transition-colors shadow-sm">
+                    <i data-lucide="send" class="w-4 h-4"></i>
+                </button>
+            </form>
+        </div>
+    </aside>
+
+    <!-- Mobile Navigation Overlay -->
+    <div id="mobile-nav-overlay" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden">
+        <div class="w-64 h-full bg-gray-900 p-4 flex flex-col">
+            <div class="flex justify-between items-center text-white mb-4">
+                <span class="font-bold">メニュー</span>
+                <button id="close-mobile-nav" class="p-1"><i data-lucide="x"></i></button>
+            </div>
+            <nav class="flex-1 overflow-y-auto p-2" id="mobile-section-nav"></nav>
+            <div class="mt-4 space-y-2">
+                <button onclick="document.querySelector('.lg\\:flex').classList.toggle('hidden'); document.querySelector('.lg\\:flex').classList.toggle('absolute'); document.querySelector('.lg\\:flex').classList.toggle('inset-0'); document.querySelector('.lg\\:flex').classList.toggle('z-50'); document.getElementById('mobile-nav-overlay').classList.add('hidden');" class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded text-sm transition-colors">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i> AIアシスタントを開く
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Reference Upload Modal -->
+    <div id="ref-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl w-[600px] max-w-[90vw] p-6 transform scale-95 transition-transform">
+            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
+                <h3 class="text-lg font-bold flex items-center gap-2"><i data-lucide="library" class="text-blue-600"></i> 参考資料の追加</h3>
+                <button onclick="closeModal('ref-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button>
+            </div>
+            <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">資料のタイトル</label><input type="text" id="ref-title-input" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 先行研究Aの要約"></div>
+            <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">テキストファイル (.txt, .md, .csv) を読み込む</label><input type="file" id="ref-file-input" accept=".txt,.md,.csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"></div>
+            <div class="mb-4 relative"><div class="absolute inset-0 flex items-center" aria-hidden="true"><div class="w-full border-t border-gray-300"></div></div><div class="relative flex justify-center"><span class="bg-white px-2 text-xs text-gray-500">またはテキストを直接入力</span></div></div>
+            <textarea id="ref-content-input" class="w-full h-32 p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed" placeholder="資料のテキスト内容..."></textarea>
+            <div class="flex justify-end gap-3 mt-4"><button onclick="closeModal('ref-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button><button onclick="addReference()" class="px-4 py-2 bg-blue-600 text-white rounded transition text-sm font-bold">追加</button></div>
+        </div>
+    </div>
+
+    <!-- Rule Setup Modal -->
+    <div id="rule-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl w-[700px] max-w-[90vw] p-6 transform scale-95 transition-transform flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200"><h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="file-cog" class="text-emerald-600"></i> 投稿規定の設定</h3><button onclick="closeModal('rule-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button></div>
+            <div class="overflow-y-auto flex-1 pr-2">
+                <p class="text-sm text-gray-600 mb-4">投稿先の規定ページURLを入力すると、AIが内容を解析してルールを記憶します。</p>
+                <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">規定ページのURL</label><input type="url" id="rule-url-input" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm" placeholder="https://example.com/submission"></div>
+                <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">またはテキスト直接入力</label><textarea id="rule-text-input" class="w-full h-24 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"></textarea></div>
+                <div class="flex justify-end mb-4"><button onclick="extractRules()" id="rule-extract-btn" class="px-4 py-2 bg-gray-800 text-white rounded transition text-sm flex items-center gap-2"><i data-lucide="scan-text" class="w-4 h-4"></i> 解析して抽出</button></div>
+                <div id="rule-result-container" class="hidden border-t border-gray-200 pt-4 mt-2">
+                    <label class="block text-sm font-bold text-emerald-700 mb-1">抽出された規定ルール (編集可能)</label>
+                    <textarea id="rule-result-area" class="w-full h-40 p-3 bg-emerald-50 border border-emerald-200 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
+                <button onclick="closeModal('rule-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button>
+                <button onclick="saveRules()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded transition text-sm font-bold">保存して適用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export & CSV Modals -->
+    <div id="export-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl w-[800px] max-w-[90vw] max-h-[90vh] flex flex-col transform scale-95 transition-transform">
+            <div class="flex justify-between items-center p-5 border-b border-gray-200"><h3 class="text-xl font-bold">エクスポート</h3><button onclick="closeModal('export-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button></div>
+            <div class="p-5 overflow-auto flex-1"><textarea id="export-textarea" class="w-full h-96 p-4 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm" readonly></textarea></div>
+            <div class="p-5 border-t border-gray-200 flex justify-end gap-3 bg-gray-50 rounded-b-xl"><button onclick="closeModal('export-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition">閉じる</button><button onclick="copyExportText()" class="px-4 py-2 bg-blue-600 text-white rounded transition flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i> コピー</button></div>
+        </div>
+    </div>
+    <div id="csv-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl w-[600px] max-w-[90vw] p-6 transform scale-95 transition-transform">
+            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200"><h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="table" class="text-blue-500"></i> CSVから表と説明を作成</h3><button onclick="closeModal('csv-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button></div>
+            <textarea id="csv-input" class="w-full h-48 p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm mb-4" placeholder="カンマ区切りのCSVデータを貼り付け"></textarea>
+            <div class="flex justify-end gap-3"><button onclick="closeModal('csv-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button><button onclick="generateTableAndDesc()" id="csv-generate-btn" class="px-4 py-2 bg-blue-600 text-white rounded transition text-sm flex items-center gap-2"><i data-lucide="sparkles" class="w-4 h-4"></i> 表と解説を挿入</button></div>
+        </div>
+    </div>
+
+
+    <script>
+        lucide.createIcons();
+
+        // --- State Management ---
+        const STORAGE_KEY = 'academia_ai_pro_v3_state';
+        
+        // 追加: タイトルページとカバーレター
+        const sections = [
+            { id: 'title_page', name: 'Title Page', jpName: '表紙・基本情報', icon: 'layout-template' },
+            { id: 'abstract', name: 'Abstract', jpName: '概要', icon: 'file-text' },
+            { id: 'introduction', name: 'Introduction', jpName: '序論', icon: 'flag' },
+            { id: 'methods', name: 'Methods', jpName: '手法', icon: 'flask-conical' },
+            { id: 'results', name: 'Results', jpName: '結果', icon: 'bar-chart-2' },
+            { id: 'discussion', name: 'Discussion', jpName: '考察', icon: 'message-square' },
+            { id: 'conclusion', name: 'Conclusion', jpName: '結論', icon: 'check-square' },
+            { id: 'references', name: 'References', jpName: '参考文献', icon: 'bookmark' },
+            { id: 'cover_letter', name: 'Cover Letter', jpName: 'カバーレター', icon: 'mail' }
+        ];
+
+        let documentState = {
+            title: "未設定の論文",
+            rules: "",
+            referenceMaterials: [],
+            content: { title_page: "", abstract: "", introduction: "", methods: "", results: "", discussion: "", conclusion: "", references: "", cover_letter: "" }
+        };
+
+        let currentSectionId = 'abstract';
+        let isAiLoading = false;
+        let saveTimeout = null;
+
+        const savedState = localStorage.getItem(STORAGE_KEY);
+        if (savedState) {
+            try {
+                const parsed = JSON.parse(savedState);
+                documentState = { ...documentState, ...parsed };
+                if(!documentState.referenceMaterials) documentState.referenceMaterials = [];
+            } catch (e) { console.error(e); }
+        }
+
+        // --- DOM Elements ---
+        const els = {
+            sectionNav: document.getElementById('section-nav'),
+            mobileSectionNav: document.getElementById('mobile-section-nav'),
+            editorTextarea: document.getElementById('editor-textarea'),
+            currentSectionTitle: document.getElementById('current-section-title'),
+            wordCount: document.getElementById('word-count'),
+            totalWordCount: document.getElementById('total-word-count'),
+            docTitleInput: document.getElementById('doc-title'),
+            chatHistory: document.getElementById('chat-history'),
+            chatInput: document.getElementById('chat-input'),
+            chatForm: document.getElementById('chat-form'),
+            aiLoading: document.getElementById('ai-loading'),
+            toastContainer: document.getElementById('toast-container'),
+            autoSaveStatus: document.getElementById('auto-save-status'),
+            refList: document.getElementById('ref-list'),
+            refEmptyState: document.getElementById('ref-empty-state'),
+            refBadge: document.getElementById('ref-badge'),
+            ruleBadge: document.getElementById('rule-badge'),
+            sidebarRuleBadge: document.getElementById('sidebar-rule-badge'),
+            btnApplyRule: document.getElementById('btn-apply-rule'),
+            
+            // Special Toolbars
+            specialToolbar: document.getElementById('special-toolbar'),
+            btnGenerateCover: document.getElementById('btn-generate-cover'),
+            btnTemplateTitle: document.getElementById('btn-template-title')
+        };
+
+        // --- Auto Save ---
+        function triggerAutoSave() {
+            clearTimeout(saveTimeout);
+            documentState.content[currentSectionId] = els.editorTextarea.value;
+            saveTimeout = setTimeout(() => {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(documentState));
+                els.autoSaveStatus.classList.remove('opacity-0', 'saved-indicator');
+                void els.autoSaveStatus.offsetWidth;
+                els.autoSaveStatus.classList.add('saved-indicator');
+            }, 1000);
+        }
+
+        function clearAllData() {
+            if(confirm("全てのデータを消去しますか？")) { localStorage.removeItem(STORAGE_KEY); location.reload(); }
+        }
+
+        // --- UI Rendering ---
+        function renderNav() {
+            const createNavItems = (container) => {
+                container.innerHTML = '';
+                sections.forEach(sec => {
+                    const isActive = sec.id === currentSectionId;
+                    const btn = document.createElement('button');
+                    btn.className = `w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-blue-600/20 text-blue-400 font-bold' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`;
+                    btn.onclick = () => switchSection(sec.id);
+                    btn.innerHTML = `<i data-lucide="${sec.icon}" class="w-4 h-4"></i> ${sec.name} <span class="text-xs opacity-50 ml-auto">${sec.jpName}</span>`;
+                    container.appendChild(btn);
+                });
+                lucide.createIcons();
+            };
+            createNavItems(els.sectionNav);
+            createNavItems(els.mobileSectionNav);
+        }
+
+        function renderRefList() {
+            els.refList.innerHTML = '';
+            if (documentState.referenceMaterials.length === 0) {
+                els.refEmptyState.classList.remove('hidden'); els.refBadge.classList.add('hidden');
+            } else {
+                els.refEmptyState.classList.add('hidden'); els.refBadge.classList.remove('hidden');
+                documentState.referenceMaterials.forEach(ref => {
+                    const div = document.createElement('div');
+                    div.className = "flex items-center justify-between text-xs bg-gray-800 rounded px-2 py-1.5 text-gray-300 border border-gray-700";
+                    div.innerHTML = `<div class="flex items-center gap-1.5 overflow-hidden"><i data-lucide="file-text" class="w-3 h-3 text-blue-400 flex-shrink-0"></i><span class="truncate">${ref.title}</span></div>
+                        <button onclick="removeReference('${ref.id}')" class="text-gray-500 hover:text-red-400 ml-2"><i data-lucide="trash-2" class="w-3 h-3"></i></button>`;
+                    els.refList.appendChild(div);
+                });
+                lucide.createIcons();
+            }
+        }
+
+        function updateUIState() {
+            els.docTitleInput.value = documentState.title;
+            if (documentState.rules) {
+                els.ruleBadge.classList.remove('hidden'); els.sidebarRuleBadge.classList.remove('hidden');
+                els.btnApplyRule.classList.replace('bg-gray-100', 'bg-emerald-50'); els.btnApplyRule.classList.replace('text-gray-400', 'text-emerald-700'); els.btnApplyRule.classList.replace('border-gray-200', 'border-emerald-200');
+            } else {
+                els.ruleBadge.classList.add('hidden'); els.sidebarRuleBadge.classList.add('hidden');
+            }
+            renderRefList(); renderNav(); switchSection(currentSectionId, false);
+        }
+
+        function switchSection(sectionId, saveFirst = true) {
+            if (saveFirst) documentState.content[currentSectionId] = els.editorTextarea.value;
+            
+            currentSectionId = sectionId;
+            const secInfo = sections.find(s => s.id === sectionId);
+            
+            els.currentSectionTitle.textContent = `${secInfo.name} (${secInfo.jpName})`;
+            els.editorTextarea.value = documentState.content[sectionId] || '';
+            
+            // Special Toolbar Logic
+            els.specialToolbar.classList.add('hidden');
+            els.btnGenerateCover.classList.add('hidden');
+            els.btnTemplateTitle.classList.add('hidden');
+            
+            if (sectionId === 'cover_letter') {
+                els.specialToolbar.classList.remove('hidden');
+                els.btnGenerateCover.classList.remove('hidden');
+            } else if (sectionId === 'title_page') {
+                els.specialToolbar.classList.remove('hidden');
+                els.btnTemplateTitle.classList.remove('hidden');
+            }
+
+            updateWordCount(); renderNav(); if(saveFirst) triggerAutoSave();
+            document.getElementById('mobile-nav-overlay').classList.add('hidden');
+        }
+
+        function updateWordCount() {
+            const text = els.editorTextarea.value;
+            els.wordCount.textContent = `${text.trim().length} 文字`;
+            let total = 0; sections.forEach(s => { total += (s.id === currentSectionId ? text : (documentState.content[s.id] || '')).trim().length; });
+            els.totalWordCount.textContent = `計 ${total}文字`;
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const bgClass = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : 'bg-gray-800');
+            toast.className = `${bgClass} text-white px-4 py-3 rounded shadow-lg text-sm flex items-center gap-2 transform transition-all translate-y-[-100%] opacity-0 pointer-events-auto font-medium`;
+            toast.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-circle' : (type === 'success' ? 'check-circle' : 'info')}" class="w-4 h-4"></i> ${message}`;
+            els.toastContainer.appendChild(toast); lucide.createIcons();
+            requestAnimationFrame(() => toast.classList.remove('translate-y-[-100%]', 'opacity-0'));
+            setTimeout(() => { toast.classList.add('opacity-0'); setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+
+        // --- Ref & Modals ---
+        function openModal(id) { const m = document.getElementById(id); const c = m.querySelector('div'); m.classList.remove('hidden'); setTimeout(() => { m.classList.remove('opacity-0'); c.classList.remove('scale-95'); c.classList.add('scale-100'); }, 10); }
+        function closeModal(id) { const m = document.getElementById(id); const c = m.querySelector('div'); m.classList.add('opacity-0'); c.classList.remove('scale-100'); c.classList.add('scale-95'); setTimeout(() => m.classList.add('hidden'), 300); }
+        window.openRefModal = () => { document.getElementById('ref-title-input').value = ''; document.getElementById('ref-content-input').value = ''; openModal('ref-modal'); };
+        
+        document.getElementById('ref-file-input').addEventListener('change', e => {
+            const file = e.target.files[0]; if(!file) return;
+            if(!document.getElementById('ref-title-input').value) document.getElementById('ref-title-input').value = file.name;
+            const r = new FileReader(); r.onload = evt => document.getElementById('ref-content-input').value = evt.target.result; r.readAsText(file);
+        });
+
+        window.addReference = () => {
+            const t = document.getElementById('ref-title-input').value.trim(), c = document.getElementById('ref-content-input').value.trim();
+            if(!t || !c) return showToast('入力してください', 'error');
+            if(c.length > 20000) return showToast('2万文字以下にしてください', 'error');
+            documentState.referenceMaterials.push({ id: 'ref_'+Date.now(), title: t, content: c });
+            renderRefList(); triggerAutoSave(); closeModal('ref-modal'); showToast('追加しました', 'success');
+        };
+        window.removeReference = (id) => { documentState.referenceMaterials = documentState.referenceMaterials.filter(r => r.id !== id); renderRefList(); triggerAutoSave(); };
+
+        // --- Rules Setup ---
+        window.openRuleModal = () => { document.getElementById('rule-result-area').value = documentState.rules; if(documentState.rules) document.getElementById('rule-result-container').classList.remove('hidden'); openModal('rule-modal'); };
+        window.saveRules = () => { documentState.rules = document.getElementById('rule-result-area').value.trim(); updateUIState(); triggerAutoSave(); closeModal('rule-modal'); showToast('規定を保存・適用しました', 'success'); };
+
+        // --- Export & CSV ---
+        window.openCsvModal = () => openModal('csv-modal');
+        document.getElementById('export-btn').addEventListener('click', () => {
+            documentState.content[currentSectionId] = els.editorTextarea.value;
+            let out = `# ${documentState.title}\n\n`;
+            sections.forEach(sec => { if(documentState.content[sec.id]?.trim()) out += `## ${sec.name}\n\n${documentState.content[sec.id]}\n\n`; });
+            document.getElementById('export-textarea').value = out; openModal('export-modal');
+        });
+        window.copyExportText = () => { document.getElementById('export-textarea').select(); document.execCommand('copy'); showToast('コピーしました', 'success'); };
+
+        // --- Gemini API ---
+        const apiKey = ""; 
+
+        function getSystemInstruction() {
+            let base = `あなたは優秀な学術論文執筆アシスタント「Academia AI」です。回答は原則として日本語で行い、学術的で洗練されたトーンを保つこと。Markdown形式で読みやすく整形すること。`;
+            if (documentState.rules) base += `\n\n【重要：投稿規定】\n以下の規定を厳守して生成・推敲してください。\n"""\n${documentState.rules}\n"""`;
+            if (documentState.referenceMaterials.length > 0) {
+                base += `\n\n【重要：参考資料】\n以下の資料を優先的に参照し、事実に基づいた記述を行ってください。\n`;
+                documentState.referenceMaterials.forEach((r, i) => base += `\n--- 資料${i+1}: ${r.title} ---\n${r.content}\n`);
+            }
+            return base;
+        }
+
+        async function callGemini(prompt, useSearch = false) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: getSystemInstruction() }] } };
+            if (useSearch) payload.tools = [{ google_search: {} }];
+
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                    const result = await response.json();
+                    return { 
+                        text: result.candidates?.[0]?.content?.parts?.[0]?.text || "", 
+                        sourcesHtml: '' // Omitted for brevity, logic remains same if implemented fully
+                    };
+                } catch (e) { if (i === 2) throw e; await new Promise(r => setTimeout(r, 2000)); }
+            }
+        }
+
+        // Actions
+        window.extractRules = async () => {
+            const url = document.getElementById('rule-url-input').value.trim(), text = document.getElementById('rule-text-input').value.trim();
+            if(!url && !text) return showToast('URLかテキストを入力', 'error');
+            const btn = document.getElementById('rule-extract-btn'); const orig = btn.innerHTML; btn.innerHTML = '解析中...'; btn.disabled = true;
+            try {
+                const res = await callGemini(`以下の情報から、学術論文の投稿規定（文字数、フォーマット等）を抽出し、箇条書きでまとめて。\n【URL】${url}\n【テキスト】${text}`, !!url);
+                document.getElementById('rule-result-area').value = res.text.replace(/```/g, '').trim(); document.getElementById('rule-result-container').classList.remove('hidden'); showToast('抽出完了', 'success');
+            } catch(e) { showToast('解析失敗', 'error'); } finally { btn.innerHTML = orig; btn.disabled = false; }
+        };
+
+        window.generateTableAndDesc = async () => {
+            const csv = document.getElementById('csv-input').value.trim(); if(!csv) return;
+            const btn = document.getElementById('csv-generate-btn'); btn.disabled = true; btn.innerHTML = "処理中...";
+            try {
+                const mdTable = csv.split('\n').map((l,i) => { const c = l.split(',').map(x=>x.trim()); return '| '+c.join(' | ')+' |\n' + (i===0?'|'+c.map(()=>'---').join('|')+'|\n':''); }).join('');
+                const res = await callGemini(`以下のCSVデータの学術的な表の解説文を作成して。\n\n${csv}`);
+                const insertText = `\n\n${mdTable}\n\n**表の解説・分析:**\n${res.text.replace(/```/g, '')}\n\n`;
+                const startPos = els.editorTextarea.selectionStart; els.editorTextarea.value = els.editorTextarea.value.substring(0, startPos) + insertText + els.editorTextarea.value.substring(els.editorTextarea.selectionEnd);
+                updateWordCount(); triggerAutoSave(); closeModal('csv-modal'); showToast('挿入しました', 'success');
+            } catch(e) { showToast('失敗', 'error'); } finally { btn.disabled = false; btn.innerHTML = "挿入"; }
+        };
+
+        // --- Editor Actions (Modified Rule Application) ---
+        window.applyAiAction = async (actionType) => {
+            const text = els.editorTextarea.value;
+            const start = els.editorTextarea.selectionStart;
+            const end = els.editorTextarea.selectionEnd;
+            const targetText = text.substring(start, end) || text;
+            
+            if (!targetText.trim() && actionType !== 'bullet-to-text') return showToast('テキストを入力・選択してください', 'error');
+
+            let promptMsg = '', actionLabel = '';
+            
+            if (actionType === 'apply-rule') {
+                if (!documentState.rules) return showToast('先に投稿規定を設定してください', 'error');
+                // より強力で明示的なプロンプトに修正
+                promptMsg = `以下のテキストを、現在設定されている【投稿規定】（文字数、文体、フォーマット等）を完全に満たすように厳密に修正・調整してください。
+解説や挨拶は一切不要です。規定に合わせて修正された後のテキストのみを出力してください。
+規定に文字数制限がある場合は、必ずその制限内に収めてください。
+
+【対象テキスト】
+"""\n${targetText}\n"""`;
+                actionLabel = '規定に合わせて調整';
+            }
+            else if (actionType === 'bullet-to-text') {
+                if(!targetText.trim()) return showToast('展開したい箇条書きを選択してください', 'error');
+                promptMsg = `以下の箇条書きやメモから、学術論文に相応しい論理的な本文（パラグラフ）を作成してください。解説不要で生成本文のみ出力。\n\n"""\n${targetText}\n"""`;
+                actionLabel = '箇条書きから本文生成';
+            } 
+            else {
+                const acts = { 'proofread': '文法を修正し自然な日本語に', 'academic': '学術的・フォーマルな表現に', 'expand': '論理を補強し詳細に膨らませて' };
+                promptMsg = `以下のテキストを${acts[actionType]}してください。解説不要で修正後のみ出力。\n\n"""\n${targetText}\n"""`;
+                actionLabel = acts[actionType].split('し')[0];
+            }
+
+            isAiLoading = true; els.aiLoading.classList.remove('hidden');
+            appendChat('user', `[操作: ${actionLabel}]`);
+
+            try {
+                const res = await callGemini(promptMsg);
+                const newText = res.text.replace(/```/g, '').trim();
+                appendChat('ai', `処理完了。反映またはコピーしてください：\n\n${newText}`);
+                if (confirm(`${actionLabel}完了。選択部分（全体）を提案内容で上書きしますか？`)) {
+                    els.editorTextarea.value = text.substring(0, start) + newText + text.substring(end);
+                    updateWordCount(); triggerAutoSave(); showToast('更新しました', 'success');
+                }
+            } catch (error) { showToast('処理失敗', 'error'); } finally { isAiLoading = false; els.aiLoading.classList.add('hidden'); }
+        };
+
+        // --- New Specific Features ---
+        window.insertTitleTemplate = () => {
+            const template = `論文タイトル：${documentState.title}\n\n著者名：\n所属機関：\n連絡先 (Email)：\n\n概要 (Abstract) 文字数：\n本文文字数：\n図表の数：\n\nキーワード（3〜5個）：`;
+            if(els.editorTextarea.value.trim() !== '') {
+                if(!confirm('エディタにテキストがあります。末尾にテンプレートを追加しますか？')) return;
+                els.editorTextarea.value += '\n\n' + template;
+            } else {
+                els.editorTextarea.value = template;
+            }
+            updateWordCount(); triggerAutoSave(); showToast('テンプレートを挿入しました', 'success');
+        };
+
+        window.generateCoverLetter = async () => {
+            const btn = document.getElementById('btn-generate-cover');
+            const orig = btn.innerHTML; btn.innerHTML = '生成中...'; btn.disabled = true;
+            
+            try {
+                // 論文の主要な部分を収集
+                documentState.content[currentSectionId] = els.editorTextarea.value; // save current
+                const abstract = documentState.content['abstract'] || '';
+                const conclusion = documentState.content['conclusion'] || '';
+                
+                if(!abstract && !conclusion) {
+                    throw new Error('AbstractまたはConclusionにテキストを入力してから実行してください。');
+                }
+
+                const prompt = `以下の論文情報に基づいて、学術ジャーナルのエディター（編集長）宛てのカバーレター（Cover Letter）のドラフトを作成してください。
+形式は標準的な英語のカバーレター（または指定があればそれに従う）としてください。論文の新規性や重要性をアピールする内容にしてください。
+
+【論文情報】
+タイトル: ${documentState.title}
+概要 (Abstract): ${abstract.substring(0, 1000)}
+結論 (Conclusion): ${conclusion.substring(0, 1000)}`;
+
+                isAiLoading = true; els.aiLoading.classList.remove('hidden');
+                appendChat('user', `[操作: カバーレターの自動生成]`);
+                
+                const res = await callGemini(prompt);
+                const newText = res.text.replace(/```/g, '').trim();
+                
+                els.editorTextarea.value = newText;
+                updateWordCount(); triggerAutoSave();
+                appendChat('ai', `カバーレターのドラフトを作成し、エディタに挿入しました。ジャーナル名や日付、連絡先などを適宜修正してください。`);
+                showToast('カバーレターを生成しました', 'success');
+
+            } catch(e) { 
+                showToast(e.message || '生成失敗', 'error'); 
+            } finally { 
+                btn.innerHTML = orig; btn.disabled = false;
+                isAiLoading = false; els.aiLoading.classList.add('hidden');
+            }
+        };
+
+        // --- Chat Logic ---
+        els.chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); const text = els.chatInput.value.trim(); if (!text || isAiLoading) return;
+            appendChat('user', text); els.chatInput.value = ''; els.chatInput.style.height = 'auto';
+            isAiLoading = true; els.aiLoading.classList.remove('hidden');
+            try {
+                const ctx = els.editorTextarea.value.trim() ? `\n\n[現在編集中のテキスト (セクション: ${currentSectionId}):\n"${els.editorTextarea.value.substring(0, 500)}..."]` : '';
+                const response = await callGemini(text + ctx, document.getElementById('use-search-toggle').checked);
+                appendChat('ai', response.text);
+            } catch (error) { showToast('通信エラー', 'error'); } finally { isAiLoading = false; els.aiLoading.classList.add('hidden'); }
+        });
+        window.setChatInput = (t) => { els.chatInput.value = t; els.chatInput.focus(); };
+        els.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); els.chatForm.dispatchEvent(new Event('submit')); }});
+        els.chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
+
+        function appendChat(role, text) {
+            const div = document.createElement('div'); div.className = 'flex gap-3 ' + (role === 'user' ? 'flex-row-reverse' : '');
+            let html = role === 'user' ? text.replace(/\n/g, '<br>') : `<div class="markdown-body">${text.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<strong>$1</strong><br>').replace(/^\* (.*$)/gim, '<ul><li>$1</li></ul>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>`;
+            div.innerHTML = `<div class="w-8 h-8 rounded-full bg-${role==='user'?'gray-200':'indigo-100'} flex items-center justify-center flex-shrink-0 text-${role==='user'?'gray-600':'indigo-600'}"><i data-lucide="${role==='user'?'user':'bot'}" class="w-4 h-4"></i></div><div class="bg-${role==='user'?'indigo-600 text-white':'white border border-gray-200 text-gray-800'} rounded-2xl ${role==='user'?'rounded-tr-none':'rounded-tl-none'} p-3 text-sm shadow-sm max-w-[85%]">${html}</div>`;
+            els.chatHistory.appendChild(div); lucide.createIcons(); els.chatHistory.scrollTop = els.chatHistory.scrollHeight;
+        }
+
+        els.editorTextarea.addEventListener('input', () => { updateWordCount(); triggerAutoSave(); });
+        els.docTitleInput.addEventListener('input', (e) => { documentState.title = e.target.value; triggerAutoSave(); });
+
+        updateUIState();
+    </script>
+</body>
+</html>
+
