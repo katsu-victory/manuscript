@@ -197,6 +197,9 @@
             </div>
             <nav class="flex-1 overflow-y-auto p-2" id="mobile-section-nav"></nav>
             <div class="mt-4 space-y-2">
+                <button onclick="openRuleModal(); document.getElementById('mobile-nav-overlay').classList.add('hidden');" class="w-full flex items-center justify-center gap-2 bg-gray-800 text-gray-300 p-2 rounded text-sm border border-gray-700">
+                    <i data-lucide="file-cog" class="w-4 h-4"></i> 投稿規定の設定
+                </button>
                 <button onclick="document.querySelector('.lg\\:flex').classList.toggle('hidden'); document.querySelector('.lg\\:flex').classList.toggle('absolute'); document.querySelector('.lg\\:flex').classList.toggle('inset-0'); document.querySelector('.lg\\:flex').classList.toggle('z-50'); document.getElementById('mobile-nav-overlay').classList.add('hidden');" class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded text-sm transition-colors">
                     <i data-lucide="sparkles" class="w-4 h-4"></i> AIアシスタントを開く
                 </button>
@@ -259,12 +262,12 @@
 
 
     <script>
+        // Init Icons
         lucide.createIcons();
 
         // --- State Management ---
-        const STORAGE_KEY = 'academia_ai_pro_v3_state';
+        const STORAGE_KEY = 'academia_ai_pro_v4_state';
         
-        // 追加: タイトルページとカバーレター
         const sections = [
             { id: 'title_page', name: 'Title Page', jpName: '表紙・基本情報', icon: 'layout-template' },
             { id: 'abstract', name: 'Abstract', jpName: '概要', icon: 'file-text' },
@@ -319,11 +322,18 @@
             sidebarRuleBadge: document.getElementById('sidebar-rule-badge'),
             btnApplyRule: document.getElementById('btn-apply-rule'),
             
-            // Special Toolbars
             specialToolbar: document.getElementById('special-toolbar'),
             btnGenerateCover: document.getElementById('btn-generate-cover'),
-            btnTemplateTitle: document.getElementById('btn-template-title')
+            btnTemplateTitle: document.getElementById('btn-template-title'),
+            
+            mobileMenuBtn: document.getElementById('mobile-menu-btn'),
+            mobileNavOverlay: document.getElementById('mobile-nav-overlay'),
+            closeMobileNav: document.getElementById('close-mobile-nav')
         };
+
+        // --- Mobile Menu Setup ---
+        els.mobileMenuBtn.addEventListener('click', () => els.mobileNavOverlay.classList.remove('hidden'));
+        els.closeMobileNav.addEventListener('click', () => els.mobileNavOverlay.classList.add('hidden'));
 
         // --- Auto Save ---
         function triggerAutoSave() {
@@ -396,21 +406,18 @@
             els.currentSectionTitle.textContent = `${secInfo.name} (${secInfo.jpName})`;
             els.editorTextarea.value = documentState.content[sectionId] || '';
             
-            // Special Toolbar Logic
             els.specialToolbar.classList.add('hidden');
             els.btnGenerateCover.classList.add('hidden');
             els.btnTemplateTitle.classList.add('hidden');
             
             if (sectionId === 'cover_letter') {
-                els.specialToolbar.classList.remove('hidden');
-                els.btnGenerateCover.classList.remove('hidden');
+                els.specialToolbar.classList.remove('hidden'); els.btnGenerateCover.classList.remove('hidden');
             } else if (sectionId === 'title_page') {
-                els.specialToolbar.classList.remove('hidden');
-                els.btnTemplateTitle.classList.remove('hidden');
+                els.specialToolbar.classList.remove('hidden'); els.btnTemplateTitle.classList.remove('hidden');
             }
 
             updateWordCount(); renderNav(); if(saveFirst) triggerAutoSave();
-            document.getElementById('mobile-nav-overlay').classList.add('hidden');
+            els.mobileNavOverlay.classList.add('hidden');
         }
 
         function updateWordCount() {
@@ -423,7 +430,7 @@
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
             const bgClass = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : 'bg-gray-800');
-            toast.className = `${bgClass} text-white px-4 py-3 rounded shadow-lg text-sm flex items-center gap-2 transform transition-all translate-y-[-100%] opacity-0 pointer-events-auto font-medium`;
+            toast.className = `${bgClass} text-white px-4 py-3 rounded shadow-lg text-sm flex items-center gap-2 transform transition-all translate-y-[-100%] opacity-0 pointer-events-auto font-medium z-50`;
             toast.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-circle' : (type === 'success' ? 'check-circle' : 'info')}" class="w-4 h-4"></i> ${message}`;
             els.toastContainer.appendChild(toast); lucide.createIcons();
             requestAnimationFrame(() => toast.classList.remove('translate-y-[-100%]', 'opacity-0'));
@@ -482,27 +489,44 @@
             const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: getSystemInstruction() }] } };
             if (useSearch) payload.tools = [{ google_search: {} }];
 
+            // リトライロジック
             for (let i = 0; i < 3; i++) {
                 try {
                     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (!response.ok) throw new Error(`API Error: ${response.status}`);
                     const result = await response.json();
+                    
+                    let sourcesHtml = '';
+                    const gm = result.candidates?.[0]?.groundingMetadata;
+                    if (gm?.groundingAttributions?.length > 0) {
+                        const uniqueSources = new Map();
+                        gm.groundingAttributions.forEach(attr => { if (attr.web?.uri) uniqueSources.set(attr.web.uri, attr.web.title || attr.web.uri); });
+                        if (uniqueSources.size > 0) {
+                            sourcesHtml = '<div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500"><p class="font-bold mb-1">参考情報源:</p><ul class="list-disc pl-4">';
+                            uniqueSources.forEach((title, uri) => sourcesHtml += `<li><a href="${uri}" target="_blank" class="text-indigo-500 hover:underline">${title}</a></li>`);
+                            sourcesHtml += '</ul></div>';
+                        }
+                    }
+
                     return { 
                         text: result.candidates?.[0]?.content?.parts?.[0]?.text || "", 
-                        sourcesHtml: '' // Omitted for brevity, logic remains same if implemented fully
+                        sourcesHtml: sourcesHtml
                     };
-                } catch (e) { if (i === 2) throw e; await new Promise(r => setTimeout(r, 2000)); }
+                } catch (e) { 
+                    if (i === 2) throw e; 
+                    await new Promise(r => setTimeout(r, 2000)); 
+                }
             }
         }
 
-        // Actions
+        // Action Handlers
         window.extractRules = async () => {
             const url = document.getElementById('rule-url-input').value.trim(), text = document.getElementById('rule-text-input').value.trim();
             if(!url && !text) return showToast('URLかテキストを入力', 'error');
             const btn = document.getElementById('rule-extract-btn'); const orig = btn.innerHTML; btn.innerHTML = '解析中...'; btn.disabled = true;
             try {
                 const res = await callGemini(`以下の情報から、学術論文の投稿規定（文字数、フォーマット等）を抽出し、箇条書きでまとめて。\n【URL】${url}\n【テキスト】${text}`, !!url);
-                document.getElementById('rule-result-area').value = res.text.replace(/```/g, '').trim(); document.getElementById('rule-result-container').classList.remove('hidden'); showToast('抽出完了', 'success');
+                document.getElementById('rule-result-area').value = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim(); document.getElementById('rule-result-container').classList.remove('hidden'); showToast('抽出完了', 'success');
             } catch(e) { showToast('解析失敗', 'error'); } finally { btn.innerHTML = orig; btn.disabled = false; }
         };
 
@@ -512,42 +536,55 @@
             try {
                 const mdTable = csv.split('\n').map((l,i) => { const c = l.split(',').map(x=>x.trim()); return '| '+c.join(' | ')+' |\n' + (i===0?'|'+c.map(()=>'---').join('|')+'|\n':''); }).join('');
                 const res = await callGemini(`以下のCSVデータの学術的な表の解説文を作成して。\n\n${csv}`);
-                const insertText = `\n\n${mdTable}\n\n**表の解説・分析:**\n${res.text.replace(/```/g, '')}\n\n`;
-                const startPos = els.editorTextarea.selectionStart; els.editorTextarea.value = els.editorTextarea.value.substring(0, startPos) + insertText + els.editorTextarea.value.substring(els.editorTextarea.selectionEnd);
+                const insertText = `\n\n${mdTable}\n\n**表の解説・分析:**\n${res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim()}\n\n`;
+                
+                const start = els.editorTextarea.selectionStart;
+                const end = els.editorTextarea.selectionEnd;
+                const text = els.editorTextarea.value;
+                els.editorTextarea.value = text.substring(0, start) + insertText + text.substring(end);
+                
                 updateWordCount(); triggerAutoSave(); closeModal('csv-modal'); showToast('挿入しました', 'success');
             } catch(e) { showToast('失敗', 'error'); } finally { btn.disabled = false; btn.innerHTML = "挿入"; }
         };
 
-        // --- Editor Actions (Modified Rule Application) ---
+        // --- Editor Actions (バグ修正済み) ---
         window.applyAiAction = async (actionType) => {
             const text = els.editorTextarea.value;
-            const start = els.editorTextarea.selectionStart;
-            const end = els.editorTextarea.selectionEnd;
-            const targetText = text.substring(start, end) || text;
+            let start = els.editorTextarea.selectionStart;
+            let end = els.editorTextarea.selectionEnd;
+            let targetText = text.substring(start, end);
+            let isWholeText = false;
             
-            if (!targetText.trim() && actionType !== 'bullet-to-text') return showToast('テキストを入力・選択してください', 'error');
+            // 何も選択されていない場合
+            if (!targetText) {
+                // 箇条書き展開の場合のみ、文字数が多ければエラーにする（全上書き事故防止）
+                if (actionType === 'bullet-to-text' && text.trim().length > 300) {
+                    return showToast('展開したい箇条書きの部分をドラッグして選択してください', 'error');
+                }
+                
+                // それ以外（または文字数が少ない箇条書き）の場合は全体を対象とする
+                targetText = text;
+                start = 0;
+                end = text.length;
+                isWholeText = true;
+            }
+
+            if (!targetText.trim()) return showToast('テキストを入力または選択してください', 'error');
 
             let promptMsg = '', actionLabel = '';
             
             if (actionType === 'apply-rule') {
                 if (!documentState.rules) return showToast('先に投稿規定を設定してください', 'error');
-                // より強力で明示的なプロンプトに修正
-                promptMsg = `以下のテキストを、現在設定されている【投稿規定】（文字数、文体、フォーマット等）を完全に満たすように厳密に修正・調整してください。
-解説や挨拶は一切不要です。規定に合わせて修正された後のテキストのみを出力してください。
-規定に文字数制限がある場合は、必ずその制限内に収めてください。
-
-【対象テキスト】
-"""\n${targetText}\n"""`;
+                promptMsg = `以下のテキストを、現在設定されている【投稿規定】（文字数、文体、フォーマット等）を完全に満たすように厳密に修正・調整してください。解説や挨拶は一切不要です。規定に合わせて修正された後のテキストのみを出力してください。規定に文字数制限がある場合は、必ずその制限内に収めてください。\n\n【対象テキスト】\n"""\n${targetText}\n"""`;
                 actionLabel = '規定に合わせて調整';
             }
             else if (actionType === 'bullet-to-text') {
-                if(!targetText.trim()) return showToast('展開したい箇条書きを選択してください', 'error');
-                promptMsg = `以下の箇条書きやメモから、学術論文に相応しい論理的な本文（パラグラフ）を作成してください。解説不要で生成本文のみ出力。\n\n"""\n${targetText}\n"""`;
+                promptMsg = `以下の箇条書きやメモから、学術論文に相応しい論理的な本文（パラグラフ）を作成してください。解説不要で生成本文のみ出力してください。\n\n【箇条書きメモ】\n"""\n${targetText}\n"""`;
                 actionLabel = '箇条書きから本文生成';
             } 
             else {
                 const acts = { 'proofread': '文法を修正し自然な日本語に', 'academic': '学術的・フォーマルな表現に', 'expand': '論理を補強し詳細に膨らませて' };
-                promptMsg = `以下のテキストを${acts[actionType]}してください。解説不要で修正後のみ出力。\n\n"""\n${targetText}\n"""`;
+                promptMsg = `以下のテキストを${acts[actionType]}してください。解説不要で修正後のみ出力してください。\n\n【対象テキスト】\n"""\n${targetText}\n"""`;
                 actionLabel = acts[actionType].split('し')[0];
             }
 
@@ -556,16 +593,26 @@
 
             try {
                 const res = await callGemini(promptMsg);
-                const newText = res.text.replace(/```/g, '').trim();
+                const newText = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
+                
                 appendChat('ai', `処理完了。反映またはコピーしてください：\n\n${newText}`);
-                if (confirm(`${actionLabel}完了。選択部分（全体）を提案内容で上書きしますか？`)) {
+                
+                const confirmMsg = isWholeText ? 
+                    `${actionLabel}が完了しました。エディタ全体を提案内容で上書きしますか？` : 
+                    `${actionLabel}が完了しました。選択部分を提案内容で上書きしますか？`;
+
+                if (confirm(confirmMsg)) {
                     els.editorTextarea.value = text.substring(0, start) + newText + text.substring(end);
-                    updateWordCount(); triggerAutoSave(); showToast('更新しました', 'success');
+                    updateWordCount(); triggerAutoSave(); showToast('テキストを更新しました', 'success');
                 }
-            } catch (error) { showToast('処理失敗', 'error'); } finally { isAiLoading = false; els.aiLoading.classList.add('hidden'); }
+            } catch (error) { 
+                showToast('処理に失敗しました', 'error'); 
+            } finally { 
+                isAiLoading = false; els.aiLoading.classList.add('hidden'); 
+            }
         };
 
-        // --- New Specific Features ---
+        // --- Specific Features ---
         window.insertTitleTemplate = () => {
             const template = `論文タイトル：${documentState.title}\n\n著者名：\n所属機関：\n連絡先 (Email)：\n\n概要 (Abstract) 文字数：\n本文文字数：\n図表の数：\n\nキーワード（3〜5個）：`;
             if(els.editorTextarea.value.trim() !== '') {
@@ -582,8 +629,7 @@
             const orig = btn.innerHTML; btn.innerHTML = '生成中...'; btn.disabled = true;
             
             try {
-                // 論文の主要な部分を収集
-                documentState.content[currentSectionId] = els.editorTextarea.value; // save current
+                documentState.content[currentSectionId] = els.editorTextarea.value; 
                 const abstract = documentState.content['abstract'] || '';
                 const conclusion = documentState.content['conclusion'] || '';
                 
@@ -592,7 +638,7 @@
                 }
 
                 const prompt = `以下の論文情報に基づいて、学術ジャーナルのエディター（編集長）宛てのカバーレター（Cover Letter）のドラフトを作成してください。
-形式は標準的な英語のカバーレター（または指定があればそれに従う）としてください。論文の新規性や重要性をアピールする内容にしてください。
+形式は標準的な英語のカバーレター（または指定があればそれに従う）としてください。論文の新規性や重要性をアピールする内容にしてください。解説不要でレター本文のみ出力してください。
 
 【論文情報】
 タイトル: ${documentState.title}
@@ -603,7 +649,7 @@
                 appendChat('user', `[操作: カバーレターの自動生成]`);
                 
                 const res = await callGemini(prompt);
-                const newText = res.text.replace(/```/g, '').trim();
+                const newText = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
                 
                 els.editorTextarea.value = newText;
                 updateWordCount(); triggerAutoSave();
@@ -626,17 +672,17 @@
             try {
                 const ctx = els.editorTextarea.value.trim() ? `\n\n[現在編集中のテキスト (セクション: ${currentSectionId}):\n"${els.editorTextarea.value.substring(0, 500)}..."]` : '';
                 const response = await callGemini(text + ctx, document.getElementById('use-search-toggle').checked);
-                appendChat('ai', response.text);
+                appendChat('ai', response.text, response.sourcesHtml);
             } catch (error) { showToast('通信エラー', 'error'); } finally { isAiLoading = false; els.aiLoading.classList.add('hidden'); }
         });
         window.setChatInput = (t) => { els.chatInput.value = t; els.chatInput.focus(); };
         els.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); els.chatForm.dispatchEvent(new Event('submit')); }});
         els.chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
 
-        function appendChat(role, text) {
+        function appendChat(role, text, sources = '') {
             const div = document.createElement('div'); div.className = 'flex gap-3 ' + (role === 'user' ? 'flex-row-reverse' : '');
             let html = role === 'user' ? text.replace(/\n/g, '<br>') : `<div class="markdown-body">${text.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<strong>$1</strong><br>').replace(/^\* (.*$)/gim, '<ul><li>$1</li></ul>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>`;
-            div.innerHTML = `<div class="w-8 h-8 rounded-full bg-${role==='user'?'gray-200':'indigo-100'} flex items-center justify-center flex-shrink-0 text-${role==='user'?'gray-600':'indigo-600'}"><i data-lucide="${role==='user'?'user':'bot'}" class="w-4 h-4"></i></div><div class="bg-${role==='user'?'indigo-600 text-white':'white border border-gray-200 text-gray-800'} rounded-2xl ${role==='user'?'rounded-tr-none':'rounded-tl-none'} p-3 text-sm shadow-sm max-w-[85%]">${html}</div>`;
+            div.innerHTML = `<div class="w-8 h-8 rounded-full bg-${role==='user'?'gray-200':'indigo-100'} flex items-center justify-center flex-shrink-0 text-${role==='user'?'gray-600':'indigo-600'}"><i data-lucide="${role==='user'?'user':'bot'}" class="w-4 h-4"></i></div><div class="bg-${role==='user'?'indigo-600 text-white':'white border border-gray-200 text-gray-800'} rounded-2xl ${role==='user'?'rounded-tr-none':'rounded-tl-none'} p-3 text-sm shadow-sm max-w-[85%]">${html}${sources}</div>`;
             els.chatHistory.appendChild(div); lucide.createIcons(); els.chatHistory.scrollTop = els.chatHistory.scrollHeight;
         }
 
@@ -647,4 +693,5 @@
     </script>
 </body>
 </html>
+
 
