@@ -1353,30 +1353,48 @@
 
                 if (fullText.length < 100) throw new Error("テキストが短すぎます");
 
-                // AI call to split sections
+                // AI call to split sections using markers instead of JSON for robustness
                 const res = await callGemini(`
 以下の学術論文の原稿を、指定されたセクションごとに分割してください。
-分割した結果を、以下のJSONフォーマットでのみ返してください。余計な解説は不要です。
+各セクションの開始位置に、必ず以下のマーカー名 [SECTION:セクション名] という形式で行頭に挿入してください。
+マーカー以外の余計な解説（「承知しました」「以下に分割します」等）は一切含めないでください。
 
-【JSONフォーマット例】
-{
-  "title_page": "...",
-  "abstract": "...",
-  "introduction": "...",
-  "methods": "...",
-  "results": "...",
-  "discussion": "...",
-  "conclusion": "...",
-  "references": "...",
-  "cover_letter": "..."
-}
+【使用するマーカー】
+[SECTION:title_page]
+[SECTION:abstract]
+[SECTION:introduction]
+[SECTION:methods]
+[SECTION:results]
+[SECTION:discussion]
+[SECTION:conclusion]
+[SECTION:references]
+[SECTION:cover_letter]
 
 【原稿テキスト】
 ${fullText}
                 `);
 
-                const jsonStr = res.text.replace(/```json\n?/g, '').replace(/```/g, '').trim();
-                const sectionsData = JSON.parse(jsonStr);
+                const rawText = res.text;
+                const sectionsData = {};
+                const keys = ["title_page", "abstract", "introduction", "methods", "results", "discussion", "conclusion", "references", "cover_letter"];
+
+                keys.forEach(key => {
+                    const marker = `[SECTION:${key}]`;
+                    const startIdx = rawText.indexOf(marker);
+                    if (startIdx !== -1) {
+                        const contentStart = startIdx + marker.length;
+                        // 次のマーカーを探す
+                        let nextIdx = rawText.length;
+                        keys.forEach(k => {
+                            const nm = `[SECTION:${k}]`;
+                            const nIdx = rawText.indexOf(nm, contentStart);
+                            if (nIdx !== -1 && nIdx < nextIdx) nextIdx = nIdx;
+                        });
+                        sectionsData[key] = rawText.substring(contentStart, nextIdx).trim();
+                    }
+                });
+
+                if (Object.keys(sectionsData).length === 0) throw new Error("セクションの抽出に失敗しました");
 
                 // Create new project with the data
                 createNewProject(`${file.name.split('.')[0]} (インポート)`);
