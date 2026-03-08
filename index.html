@@ -332,17 +332,34 @@
                 <span class="font-bold">メニュー</span>
                 <button id="close-mobile-nav" class="p-1"><i data-lucide="x"></i></button>
             </div>
+            <div class="mb-4">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">プロジェクト</p>
+                <select id="mobile-project-selector"
+                    onchange="loadProject(this.value); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
+                    class="w-full bg-gray-800 text-xs text-gray-300 border border-gray-700 rounded p-2 outline-none">
+                </select>
+            </div>
             <nav class="flex-1 overflow-y-auto p-2" id="mobile-section-nav"></nav>
             <div class="mt-4 space-y-2">
                 <button
+                    onclick="openImportManuscriptModal(); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
+                    class="w-full flex items-center justify-center gap-2 bg-blue-600/20 text-blue-400 p-2 rounded text-sm border border-blue-900/50">
+                    <i data-lucide="file-up" class="w-4 h-4"></i> 原稿を読み込む
+                </button>
+                <button
                     onclick="openRuleModal(); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
-                    class="w-full flex items-center justify-center gap-2 bg-gray-800 text-gray-300 p-2 rounded text-sm border border-gray-700">
+                    class="w-full flex items-center justify-center gap-2 bg-emerald-900/20 text-emerald-400 p-2 rounded text-sm border border-emerald-900/50">
                     <i data-lucide="file-cog" class="w-4 h-4"></i> 投稿規定の設定
                 </button>
                 <button
-                    onclick="document.querySelector('.lg\\:flex').classList.toggle('hidden'); document.querySelector('.lg\\:flex').classList.toggle('absolute'); document.querySelector('.lg\\:flex').classList.toggle('inset-0'); document.querySelector('.lg\\:flex').classList.toggle('z-50'); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
-                    class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded text-sm transition-colors">
-                    <i data-lucide="sparkles" class="w-4 h-4"></i> AIアシスタントを開く
+                    onclick="openSettingsModal(); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
+                    class="w-full flex items-center justify-center gap-2 bg-gray-800 text-gray-400 p-2 rounded text-sm border border-gray-700">
+                    <i data-lucide="settings" class="w-4 h-4"></i> API設定
+                </button>
+                <button
+                    onclick="document.querySelector('aside.lg\\:flex').classList.toggle('hidden'); document.querySelector('aside.lg\\:flex').classList.toggle('fixed'); document.querySelector('aside.lg\\:flex').classList.toggle('inset-0'); document.querySelector('aside.lg\\:flex').classList.toggle('z-50'); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
+                    class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded text-sm transition-colors shadow-lg">
+                    <i data-lucide="message-square" class="w-4 h-4"></i> AIアシスタント
                 </button>
             </div>
         </div>
@@ -645,14 +662,17 @@
         }
 
         function refreshProjectSelector() {
-            const sel = document.getElementById('project-selector');
-            sel.innerHTML = '';
-            projectIndex.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.title;
-                opt.selected = p.id === currentProjectId;
-                sel.appendChild(opt);
+            const selectors = [document.getElementById('project-selector'), document.getElementById('mobile-project-selector')];
+            selectors.forEach(sel => {
+                if (!sel) return;
+                sel.innerHTML = '';
+                projectIndex.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.title;
+                    opt.selected = p.id === currentProjectId;
+                    sel.appendChild(opt);
+                });
             });
         }
 
