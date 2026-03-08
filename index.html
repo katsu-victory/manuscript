@@ -1,51 +1,146 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Academia AI Pro - 論文作成支援アプリ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- External Libraries for File Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .markdown-body p { margin-bottom: 0.75em; }
-        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 0.75em; }
-        .markdown-body ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 0.75em; }
-        .markdown-body h3 { font-size: 1.1em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; }
-        .markdown-body a { color: #2563eb; text-decoration: underline; }
-        
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .markdown-body p {
+            margin-bottom: 0.75em;
+        }
+
+        .markdown-body ul {
+            list-style-type: disc;
+            padding-left: 1.5em;
+            margin-bottom: 0.75em;
+        }
+
+        .markdown-body ol {
+            list-style-type: decimal;
+            padding-left: 1.5em;
+            margin-bottom: 0.75em;
+        }
+
+        .markdown-body h3 {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+
+        .markdown-body a {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+
         .loader {
             border: 2px solid #f3f3f3;
             border-top: 2px solid #3b82f6;
             border-radius: 50%;
-            width: 16px; height: 16px;
+            width: 16px;
+            height: 16px;
             animation: spin 1s linear infinite;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        @keyframes fadeOut { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
-        .saved-indicator { animation: fadeOut 2s forwards; }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes fadeOut {
+            0% {
+                opacity: 1;
+            }
+
+            70% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .saved-indicator {
+            animation: fadeOut 2s forwards;
+        }
     </style>
 </head>
+
 <body class="bg-gray-50 text-gray-800 font-sans h-screen flex overflow-hidden">
 
-    <div id="toast-container" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
+    <div id="toast-container"
+        class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <!-- Sidebar (Left) -->
-    <aside class="w-64 bg-gray-900 text-gray-300 flex flex-col transition-all duration-300 z-20 flex-shrink-0 hidden md:flex">
+    <aside
+        class="w-64 bg-gray-900 text-gray-300 flex flex-col transition-all duration-300 z-20 flex-shrink-0 hidden md:flex">
         <div class="p-4 flex items-center justify-between text-white border-b border-gray-800">
             <div class="flex items-center gap-2">
                 <i data-lucide="book-open" class="text-blue-400"></i>
                 <h1 class="font-bold tracking-wider">Academia AI</h1>
             </div>
-            <span id="auto-save-status" class="text-[10px] text-emerald-400 opacity-0 transition-opacity"><i data-lucide="check" class="inline w-3 h-3"></i> Saved</span>
+            <span id="auto-save-status" class="text-[10px] text-emerald-400 opacity-0 transition-opacity"><i
+                    data-lucide="check" class="inline w-3 h-3"></i> Saved</span>
         </div>
-        
+
+        <div class="p-3 border-b border-gray-800 bg-gray-800/20">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider px-1">プロジェクト</p>
+                <button onclick="createNewProject()" class="text-gray-400 hover:text-white" title="新規プロジェクト"><i
+                        data-lucide="plus-circle" class="w-3.5 h-3.5"></i></button>
+            </div>
+            <select id="project-selector" onchange="loadProject(this.value)"
+                class="w-full bg-gray-800 text-xs text-gray-300 border border-gray-700 rounded p-1.5 outline-none focus:ring-1 focus:ring-blue-500 mb-2">
+                <!-- JavaScriptで動的に生成 -->
+            </select>
+            <button onclick="openImportManuscriptModal()"
+                class="w-full text-[10px] flex items-center justify-center gap-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 p-1.5 rounded transition-colors border border-blue-900/50 mb-2">
+                <i data-lucide="file-up" class="w-3.5 h-3.5"></i> 既存の原稿を読み込む
+            </button>
+            <button onclick="openRuleModal()"
+                class="w-full flex items-center justify-center gap-2 bg-emerald-900/20 hover:bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 p-1.5 rounded text-[10px] transition-colors relative">
+                <i data-lucide="file-cog" class="w-3.5 h-3.5"></i>
+                投稿規定の設定
+                <span id="sidebar-rule-badge"
+                    class="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full hidden"></span>
+            </button>
+        </div>
+
         <div class="p-3 border-b border-gray-800 bg-gray-800/50">
-            <input type="text" id="doc-title" placeholder="論文タイトル" class="w-full bg-transparent text-sm font-bold text-white border-none focus:ring-0 outline-none placeholder-gray-500" value="未設定の論文">
+            <input type="text" id="doc-title" placeholder="論文タイトル"
+                class="w-full bg-transparent text-sm font-bold text-white border-none focus:ring-0 outline-none placeholder-gray-500"
+                value="未設定の論文">
         </div>
 
         <div class="flex-1 overflow-y-auto">
@@ -57,27 +152,40 @@
             <div class="p-2 border-t border-gray-800">
                 <div class="flex items-center justify-between px-2 mt-2 mb-1">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider">参考資料・データ</p>
-                    <button onclick="openRefModal()" class="text-gray-400 hover:text-white" title="資料を追加"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                    <button onclick="openRefModal()" class="text-gray-400 hover:text-white" title="資料を追加"><i
+                            data-lucide="plus" class="w-4 h-4"></i></button>
                 </div>
                 <div id="ref-list" class="space-y-1 px-1"></div>
                 <p id="ref-empty-state" class="text-xs text-gray-600 px-2 py-2 text-center italic">資料はありません</p>
             </div>
+
+            <!-- 図表ライブラリ -->
+            <div class="p-2 border-t border-gray-800">
+                <div class="flex items-center justify-between px-2 mt-2 mb-1">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wider">図表・キャプチャ</p>
+                    <button onclick="openFigureModal()" class="text-gray-400 hover:text-white" title="画像をアップロード"><i
+                            data-lucide="image-plus" class="w-4 h-4"></i></button>
+                </div>
+                <div id="fig-small-list" class="flex flex-wrap gap-1 px-1"></div>
+                <p id="fig-empty-state" class="text-xs text-gray-600 px-2 py-2 text-center italic w-full">画像はありません</p>
+            </div>
         </div>
-        
+
         <div class="p-3 border-t border-gray-800 space-y-2 bg-gray-900">
-            <button onclick="openRuleModal()" class="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 p-2 rounded text-xs transition-colors relative">
-                <i data-lucide="file-cog" class="w-4 h-4"></i>
-                投稿規定の設定
-                <span id="sidebar-rule-badge" class="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full hidden"></span>
-            </button>
-            <button id="export-btn" class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded text-xs transition-colors">
+            <button id="export-btn"
+                class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded text-xs transition-colors">
                 <i data-lucide="download" class="w-4 h-4"></i>
                 マークダウン出力
             </button>
             <div class="flex justify-between text-[10px] text-gray-500 px-1 pt-1">
-                <button onclick="clearAllData()" class="hover:text-red-400 underline">全データクリア</button>
+                <button onclick="deleteCurrentProject()" class="hover:text-red-400">プロジェクト削除</button>
                 <span id="total-word-count">計 0文字</span>
             </div>
+            <button onclick="openSettingsModal()"
+                class="w-full mt-2 flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-400 p-2 rounded text-[10px] transition-colors border border-gray-700">
+                <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+                API設定
+            </button>
         </div>
     </aside>
 
@@ -94,56 +202,75 @@
         <header class="h-14 border-b border-gray-200 flex items-center justify-between px-6 bg-white flex-shrink-0">
             <div class="flex items-center gap-3">
                 <h2 id="current-section-title" class="text-lg font-bold text-gray-800">Abstract</h2>
-                <span id="rule-badge" class="hidden text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold">規定適用中</span>
-                <span id="ref-badge" class="hidden text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded border border-blue-200 font-bold">資料参照中</span>
+                <span id="rule-badge"
+                    class="hidden text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold">規定適用中</span>
+                <span id="ref-badge"
+                    class="hidden text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded border border-blue-200 font-bold">資料参照中</span>
             </div>
             <span id="word-count" class="text-xs text-gray-500 font-mono">0 文字</span>
         </header>
 
         <div class="flex-1 overflow-auto flex flex-col relative">
             <!-- 共通ツールバー -->
-            <div id="common-toolbar" class="p-3 border-b border-gray-100 bg-gray-50/80 flex flex-wrap gap-2 items-center sticky top-0 z-10 backdrop-blur-sm">
-                
+            <div id="common-toolbar"
+                class="p-3 border-b border-gray-100 bg-gray-50/80 flex flex-wrap gap-2 items-center sticky top-0 z-10 backdrop-blur-sm">
+
                 <div class="flex bg-white border border-gray-200 rounded-md shadow-sm overflow-hidden">
-                    <button onclick="applyAiAction('proofread')" class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition border-r border-gray-200" title="文法チェック・自然な日本語に修正">
+                    <button onclick="applyAiAction('proofread')"
+                        class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition border-r border-gray-200"
+                        title="文法チェック・自然な日本語に修正">
                         <i data-lucide="check-circle" class="w-3.5 h-3.5 text-gray-500"></i> 推敲
                     </button>
-                    <button onclick="applyAiAction('academic')" class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition border-r border-gray-200" title="学術的でフォーマルな表現に変換">
+                    <button onclick="applyAiAction('academic')"
+                        class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition border-r border-gray-200"
+                        title="学術的でフォーマルな表現に変換">
                         <i data-lucide="graduation-cap" class="w-3.5 h-3.5 text-gray-500"></i> 学術的変換
                     </button>
-                    <button onclick="applyAiAction('expand')" class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition" title="論理を補強し内容を膨らませる">
+                    <button onclick="applyAiAction('expand')"
+                        class="text-xs flex items-center gap-1.5 hover:bg-gray-100 text-gray-700 px-3 py-1.5 transition"
+                        title="論理を補強し内容を膨らませる">
                         <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-gray-500"></i> 拡張
                     </button>
                 </div>
-                
-                <button onclick="applyAiAction('bullet-to-text')" class="text-xs flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-md transition border border-indigo-200 shadow-sm font-medium" title="メモや箇条書きから、学術的な段落を自動生成します">
+
+                <button onclick="applyAiAction('bullet-to-text')"
+                    class="text-xs flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-md transition border border-indigo-200 shadow-sm font-medium"
+                    title="メモや箇条書きから、学術的な段落を自動生成します">
                     <i data-lucide="list-tree" class="w-3.5 h-3.5"></i> 箇条書きから生成
                 </button>
 
                 <!-- 規定適用 -->
-                <button onclick="applyAiAction('apply-rule')" id="btn-apply-rule" class="text-xs flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-400 px-3 py-1.5 rounded-md transition border border-gray-200 shadow-sm" title="投稿規定を設定すると有効になります">
+                <button onclick="applyAiAction('apply-rule')" id="btn-apply-rule"
+                    class="text-xs flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-400 px-3 py-1.5 rounded-md transition border border-gray-200 shadow-sm"
+                    title="投稿規定を設定すると有効になります">
                     <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> 規定に合わせて調整
                 </button>
 
                 <!-- CSV -->
-                <button onclick="openCsvModal()" class="text-xs flex items-center gap-1.5 bg-white hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md transition border border-gray-200 shadow-sm ml-auto">
+                <button onclick="openCsvModal()"
+                    class="text-xs flex items-center gap-1.5 bg-white hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md transition border border-gray-200 shadow-sm ml-auto">
                     <i data-lucide="table" class="w-3.5 h-3.5 text-blue-500"></i> CSV表作成
                 </button>
             </div>
 
             <!-- セクション固有の特別ツールバー（Title Page, Cover Letter用） -->
-            <div id="special-toolbar" class="hidden p-3 border-b border-indigo-100 bg-indigo-50/80 flex flex-wrap gap-2 items-center sticky top-12 z-10 backdrop-blur-sm">
+            <div id="special-toolbar"
+                class="hidden p-3 border-b border-indigo-100 bg-indigo-50/80 flex flex-wrap gap-2 items-center sticky top-12 z-10 backdrop-blur-sm">
                 <!-- Cover Letter用のボタン -->
-                <button id="btn-generate-cover" onclick="generateCoverLetter()" class="hidden text-xs flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition shadow-sm font-bold w-full justify-center">
+                <button id="btn-generate-cover" onclick="generateCoverLetter()"
+                    class="hidden text-xs flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition shadow-sm font-bold w-full justify-center">
                     <i data-lucide="sparkles" class="w-4 h-4"></i> 論文全体からカバーレターを自動生成する
                 </button>
                 <!-- Title Page用のボタン -->
-                <button id="btn-template-title" onclick="insertTitleTemplate()" class="hidden text-xs flex items-center gap-1.5 bg-white hover:bg-gray-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-md transition shadow-sm font-medium">
+                <button id="btn-template-title" onclick="insertTitleTemplate()"
+                    class="hidden text-xs flex items-center gap-1.5 bg-white hover:bg-gray-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-md transition shadow-sm font-medium">
                     <i data-lucide="layout-template" class="w-4 h-4"></i> タイトルページのテンプレートを挿入
                 </button>
             </div>
 
-            <textarea id="editor-textarea" class="flex-1 w-full p-6 resize-none border-none outline-none text-gray-800 text-lg leading-loose placeholder-gray-300 bg-white" placeholder="ここにテキストを入力..."></textarea>
+            <textarea id="editor-textarea"
+                class="flex-1 w-full p-6 resize-none border-none outline-none text-gray-800 text-lg leading-loose placeholder-gray-300 bg-white"
+                placeholder="ここにテキストを入力..."></textarea>
         </div>
     </main>
 
@@ -156,7 +283,8 @@
             </div>
             <div class="flex items-center gap-2 text-xs">
                 <label class="flex items-center gap-1 cursor-pointer" title="最新の文献や情報をウェブから検索します">
-                    <input type="checkbox" id="use-search-toggle" class="rounded text-indigo-600 focus:ring-indigo-500" checked>
+                    <input type="checkbox" id="use-search-toggle" class="rounded text-indigo-600 focus:ring-indigo-500"
+                        checked>
                     <span class="text-gray-600">Web検索</span>
                 </label>
             </div>
@@ -164,12 +292,18 @@
 
         <div id="chat-history" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
             <div class="flex gap-3">
-                <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 text-indigo-600"><i data-lucide="bot" class="w-4 h-4"></i></div>
-                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-none p-3 text-sm text-gray-700 shadow-sm">
+                <div
+                    class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 text-indigo-600">
+                    <i data-lucide="bot" class="w-4 h-4"></i>
+                </div>
+                <div
+                    class="bg-white border border-gray-200 rounded-2xl rounded-tl-none p-3 text-sm text-gray-700 shadow-sm">
                     <p class="mb-2">論文執筆をサポートします。左のサイドバーから「参考資料」を追加すると、その内容を踏まえた文章生成や議論が可能になります。</p>
                     <div class="flex flex-wrap gap-1.5">
-                        <button onclick="setChatInput('この論文の構成案（アウトライン）を作成して')" class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full hover:bg-indigo-100 transition border border-indigo-100">構成案の作成</button>
-                        <button onclick="setChatInput('参考資料の内容を踏まえて、この結果から言える考察のポイントを3つ挙げて')" class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full hover:bg-indigo-100 transition border border-indigo-100">資料に基づく考察提案</button>
+                        <button onclick="setChatInput('この論文の構成案（アウトライン）を作成して')"
+                            class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full hover:bg-indigo-100 transition border border-indigo-100">構成案の作成</button>
+                        <button onclick="setChatInput('参考資料の内容を踏まえて、この結果から言える考察のポイントを3つ挙げて')"
+                            class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full hover:bg-indigo-100 transition border border-indigo-100">資料に基づく考察提案</button>
                     </div>
                 </div>
             </div>
@@ -180,8 +314,11 @@
                 <div class="loader"></div><span>推論・検索中...</span>
             </div>
             <form id="chat-form" class="relative flex items-end gap-2">
-                <textarea id="chat-input" rows="1" class="w-full resize-none bg-gray-100 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-lg p-2.5 text-sm transition-all shadow-inner max-h-32" placeholder="質問、調査依頼..."></textarea>
-                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-2.5 flex-shrink-0 transition-colors shadow-sm">
+                <textarea id="chat-input" rows="1"
+                    class="w-full resize-none bg-gray-100 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-lg p-2.5 text-sm transition-all shadow-inner max-h-32"
+                    placeholder="質問、調査依頼..."></textarea>
+                <button type="submit"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-2.5 flex-shrink-0 transition-colors shadow-sm">
                     <i data-lucide="send" class="w-4 h-4"></i>
                 </button>
             </form>
@@ -197,10 +334,14 @@
             </div>
             <nav class="flex-1 overflow-y-auto p-2" id="mobile-section-nav"></nav>
             <div class="mt-4 space-y-2">
-                <button onclick="openRuleModal(); document.getElementById('mobile-nav-overlay').classList.add('hidden');" class="w-full flex items-center justify-center gap-2 bg-gray-800 text-gray-300 p-2 rounded text-sm border border-gray-700">
+                <button
+                    onclick="openRuleModal(); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
+                    class="w-full flex items-center justify-center gap-2 bg-gray-800 text-gray-300 p-2 rounded text-sm border border-gray-700">
                     <i data-lucide="file-cog" class="w-4 h-4"></i> 投稿規定の設定
                 </button>
-                <button onclick="document.querySelector('.lg\\:flex').classList.toggle('hidden'); document.querySelector('.lg\\:flex').classList.toggle('absolute'); document.querySelector('.lg\\:flex').classList.toggle('inset-0'); document.querySelector('.lg\\:flex').classList.toggle('z-50'); document.getElementById('mobile-nav-overlay').classList.add('hidden');" class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded text-sm transition-colors">
+                <button
+                    onclick="document.querySelector('.lg\\:flex').classList.toggle('hidden'); document.querySelector('.lg\\:flex').classList.toggle('absolute'); document.querySelector('.lg\\:flex').classList.toggle('inset-0'); document.querySelector('.lg\\:flex').classList.toggle('z-50'); document.getElementById('mobile-nav-overlay').classList.add('hidden');"
+                    class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded text-sm transition-colors">
                     <i data-lucide="sparkles" class="w-4 h-4"></i> AIアシスタントを開く
                 </button>
             </div>
@@ -209,54 +350,193 @@
 
     <!-- Modals -->
     <!-- Reference Upload Modal -->
-    <div id="ref-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+    <div id="ref-modal"
+        class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl w-[600px] max-w-[90vw] p-6 transform scale-95 transition-transform">
             <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
-                <h3 class="text-lg font-bold flex items-center gap-2"><i data-lucide="library" class="text-blue-600"></i> 参考資料の追加</h3>
-                <button onclick="closeModal('ref-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button>
+                <h3 class="text-lg font-bold flex items-center gap-2"><i data-lucide="library"
+                        class="text-blue-600"></i> 参考資料の追加</h3>
+                <button onclick="closeModal('ref-modal')" class="text-gray-500 hover:text-gray-800"><i
+                        data-lucide="x"></i></button>
             </div>
-            <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">資料のタイトル</label><input type="text" id="ref-title-input" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 先行研究Aの要約"></div>
-            <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">テキストファイル (.txt, .md, .csv) を読み込む</label><input type="file" id="ref-file-input" accept=".txt,.md,.csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"></div>
-            <div class="mb-4 relative"><div class="absolute inset-0 flex items-center" aria-hidden="true"><div class="w-full border-t border-gray-300"></div></div><div class="relative flex justify-center"><span class="bg-white px-2 text-xs text-gray-500">またはテキストを直接入力</span></div></div>
-            <textarea id="ref-content-input" class="w-full h-32 p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed" placeholder="資料のテキスト内容..."></textarea>
-            <div class="flex justify-end gap-3 mt-4"><button onclick="closeModal('ref-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button><button onclick="addReference()" class="px-4 py-2 bg-blue-600 text-white rounded transition text-sm font-bold">追加</button></div>
+            <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">資料のタイトル</label><input
+                    type="text" id="ref-title-input"
+                    class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    placeholder="例: 先行研究Aの要約"></div>
+            <div class="mb-4">
+                <label class="block text-sm font-bold text-gray-700 mb-1">ファイル読み込み (PDF, DOCX, XLSX, TXT, MD,
+                    CSV)</label>
+                <input type="file" id="ref-file-input" accept=".pdf,.docx,.xlsx,.txt,.md,.csv"
+                    class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                <div id="file-loading-indicator" class="hidden mt-2 flex items-center gap-2 text-xs text-blue-600">
+                    <div class="loader"></div><span>ファイルを解析中...</span>
+                </div>
+            </div>
+            <div class="mb-4 relative">
+                <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div class="w-full border-t border-gray-300"></div>
+                </div>
+                <div class="relative flex justify-center"><span
+                        class="bg-white px-2 text-xs text-gray-500">またはテキストを直接入力</span></div>
+            </div>
+            <textarea id="ref-content-input"
+                class="w-full h-32 p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed"
+                placeholder="資料のテキスト内容..."></textarea>
+            <div class="flex justify-end gap-3 mt-4"><button onclick="closeModal('ref-modal')"
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button><button
+                    onclick="addReference()"
+                    class="px-4 py-2 bg-blue-600 text-white rounded transition text-sm font-bold">追加</button></div>
         </div>
     </div>
 
     <!-- Rule Setup Modal -->
-    <div id="rule-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl w-[700px] max-w-[90vw] p-6 transform scale-95 transition-transform flex flex-col max-h-[90vh]">
-            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200"><h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="file-cog" class="text-emerald-600"></i> 投稿規定の設定</h3><button onclick="closeModal('rule-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button></div>
+    <div id="rule-modal"
+        class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div
+            class="bg-white rounded-xl shadow-2xl w-[700px] max-w-[90vw] p-6 transform scale-95 transition-transform flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
+                <h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="file-cog"
+                        class="text-emerald-600"></i> 投稿規定の設定</h3><button onclick="closeModal('rule-modal')"
+                    class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button>
+            </div>
             <div class="overflow-y-auto flex-1 pr-2">
                 <p class="text-sm text-gray-600 mb-4">投稿先の規定ページURLを入力すると、AIが内容を解析してルールを記憶します。</p>
-                <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">規定ページのURL</label><input type="url" id="rule-url-input" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm" placeholder="https://example.com/submission"></div>
-                <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">またはテキスト直接入力</label><textarea id="rule-text-input" class="w-full h-24 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"></textarea></div>
-                <div class="flex justify-end mb-4"><button onclick="extractRules()" id="rule-extract-btn" class="px-4 py-2 bg-gray-800 text-white rounded transition text-sm flex items-center gap-2"><i data-lucide="scan-text" class="w-4 h-4"></i> 解析して抽出</button></div>
+                <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">規定ページのURL</label><input
+                        type="url" id="rule-url-input"
+                        class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                        placeholder="https://example.com/submission"></div>
+                <div class="mb-4"><label class="block text-sm font-bold text-gray-700 mb-1">またはテキスト直接入力</label><textarea
+                        id="rule-text-input"
+                        class="w-full h-24 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"></textarea>
+                </div>
+                <div class="flex justify-end mb-4"><button onclick="extractRules()" id="rule-extract-btn"
+                        class="px-4 py-2 bg-gray-800 text-white rounded transition text-sm flex items-center gap-2"><i
+                            data-lucide="scan-text" class="w-4 h-4"></i> 解析して抽出</button></div>
                 <div id="rule-result-container" class="hidden border-t border-gray-200 pt-4 mt-2">
                     <label class="block text-sm font-bold text-emerald-700 mb-1">抽出された規定ルール (編集可能)</label>
-                    <textarea id="rule-result-area" class="w-full h-40 p-3 bg-emerald-50 border border-emerald-200 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"></textarea>
+                    <textarea id="rule-result-area"
+                        class="w-full h-40 p-3 bg-emerald-50 border border-emerald-200 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"></textarea>
                 </div>
             </div>
             <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
-                <button onclick="closeModal('rule-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button>
-                <button onclick="saveRules()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded transition text-sm font-bold">保存して適用</button>
+                <button onclick="closeModal('rule-modal')"
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button>
+                <button onclick="saveRules()"
+                    class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded transition text-sm font-bold">保存して適用</button>
             </div>
         </div>
     </div>
 
     <!-- Export & CSV Modals -->
-    <div id="export-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
-        <div class="bg-white rounded-xl shadow-2xl w-[800px] max-w-[90vw] max-h-[90vh] flex flex-col transform scale-95 transition-transform">
-            <div class="flex justify-between items-center p-5 border-b border-gray-200"><h3 class="text-xl font-bold">エクスポート</h3><button onclick="closeModal('export-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button></div>
-            <div class="p-5 overflow-auto flex-1"><textarea id="export-textarea" class="w-full h-96 p-4 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm" readonly></textarea></div>
-            <div class="p-5 border-t border-gray-200 flex justify-end gap-3 bg-gray-50 rounded-b-xl"><button onclick="closeModal('export-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition">閉じる</button><button onclick="copyExportText()" class="px-4 py-2 bg-blue-600 text-white rounded transition flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i> コピー</button></div>
+    <div id="export-modal"
+        class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div
+            class="bg-white rounded-xl shadow-2xl w-[800px] max-w-[90vw] max-h-[90vh] flex flex-col transform scale-95 transition-transform">
+            <div class="flex justify-between items-center p-5 border-b border-gray-200">
+                <h3 class="text-xl font-bold">エクスポート</h3><button onclick="closeModal('export-modal')"
+                    class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button>
+            </div>
+            <div class="p-5 overflow-auto flex-1"><textarea id="export-textarea"
+                    class="w-full h-96 p-4 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm"
+                    readonly></textarea></div>
+            <div class="p-5 border-t border-gray-200 flex justify-end gap-3 bg-gray-50 rounded-b-xl"><button
+                    onclick="closeModal('export-modal')"
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition">閉じる</button><button
+                    onclick="copyExportText()"
+                    class="px-4 py-2 bg-blue-600 text-white rounded transition flex items-center gap-2"><i
+                        data-lucide="copy" class="w-4 h-4"></i> コピー</button></div>
         </div>
     </div>
-    <div id="csv-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+    <div id="csv-modal"
+        class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
         <div class="bg-white rounded-xl shadow-2xl w-[600px] max-w-[90vw] p-6 transform scale-95 transition-transform">
-            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200"><h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="table" class="text-blue-500"></i> CSVから表と説明を作成</h3><button onclick="closeModal('csv-modal')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button></div>
-            <textarea id="csv-input" class="w-full h-48 p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm mb-4" placeholder="カンマ区切りのCSVデータを貼り付け"></textarea>
-            <div class="flex justify-end gap-3"><button onclick="closeModal('csv-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button><button onclick="generateTableAndDesc()" id="csv-generate-btn" class="px-4 py-2 bg-blue-600 text-white rounded transition text-sm flex items-center gap-2"><i data-lucide="sparkles" class="w-4 h-4"></i> 表と解説を挿入</button></div>
+            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
+                <h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="table" class="text-blue-500"></i>
+                    CSVから表と説明を作成</h3>
+                <button onclick="closeModal('csv-modal')" class="text-gray-500 hover:text-gray-800"><i
+                        data-lucide="x"></i></button>
+            </div>
+            <textarea id="csv-input"
+                class="w-full h-48 p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm mb-4"
+                placeholder="カンマ区切りのCSVデータを貼り付け"></textarea>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal('csv-modal')"
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button>
+                <button onclick="generateTableAndDesc()" id="csv-generate-btn"
+                    class="px-4 py-2 bg-blue-600 text-white rounded transition text-sm flex items-center gap-2"><i
+                        data-lucide="sparkles" class="w-4 h-4"></i> 表と解説を挿入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Settings Modal -->
+    <div id="settings-modal"
+        class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl w-[500px] max-w-[90vw] p-6 transform scale-95 transition-transform">
+            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
+                <h3 class="text-lg font-bold flex items-center gap-2"><i data-lucide="settings"
+                        class="text-gray-600"></i> API設定</h3>
+                <button onclick="closeModal('settings-modal')" class="text-gray-500 hover:text-gray-800"><i
+                        data-lucide="x"></i></button>
+            </div>
+            <div class="mb-4">
+                <div class="flex justify-between items-end mb-1">
+                    <label class="block text-sm font-bold text-gray-700">Gemini API Key</label>
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank"
+                        class="text-[10px] text-blue-600 hover:underline flex items-center gap-0.5">
+                        <i data-lucide="external-link" class="w-2.5 h-2.5"></i> キーを取得する
+                    </a>
+                </div>
+                <input type="password" id="api-key-input"
+                    class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    placeholder="AI Studioで取得したAPIキーを入力">
+                <p class="text-[10px] text-gray-500 mt-1">※キーはブラウザのローカルストレージにのみ保存されます。</p>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-bold text-gray-700 mb-1">使用モデル</label>
+                <select id="model-select"
+                    class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash (推奨: 高速)</option>
+                    <option value="gemini-2.0-pro-exp-02-05">Gemini 2.0 Pro Exp (高精度)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                </select>
+            </div>
+            <div class="flex justify-end gap-3 mt-4">
+                <button onclick="closeModal('settings-modal')"
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button>
+                <button onclick="saveSettings()"
+                    class="px-4 py-2 bg-indigo-600 text-white rounded transition text-sm font-bold">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manuscript Import Modal -->
+    <div id="import-manuscript-modal"
+        class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl w-[600px] max-w-[90vw] p-6 transform scale-95 transition-transform">
+            <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
+                <h3 class="text-lg font-bold flex items-center gap-2"><i data-lucide="file-up"
+                        class="text-blue-600"></i> 原稿の自動読み込み</h3>
+                <button onclick="closeModal('import-manuscript-modal')" class="text-gray-500 hover:text-gray-800"><i
+                        data-lucide="x"></i></button>
+            </div>
+            <p class="text-xs text-gray-500 mb-4">すでに書きかけの原稿がある場合、ファイルを読み込んで各セクション（Abstract, Introduction等）へ自動的に振り分けます。
+            </p>
+            <div class="mb-4">
+                <label class="block text-sm font-bold text-gray-700 mb-1">ファイルを選択 (PDF, DOCX, TXT)</label>
+                <input type="file" id="import-manuscript-input" accept=".pdf,.docx,.txt"
+                    class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                <div id="import-loading-indicator" class="hidden mt-2 flex items-center gap-2 text-xs text-blue-600">
+                    <div class="loader"></div><span>原稿を解析・分割中... (数分かかる場合があります)</span>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-4">
+                <button onclick="closeModal('import-manuscript-modal')"
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button>
+                <button id="btn-do-import" onclick="processManuscriptImport()"
+                    class="px-4 py-2 bg-blue-600 text-white rounded transition text-sm font-bold">読み込み開始</button>
+            </div>
         </div>
     </div>
 
@@ -266,8 +546,18 @@
         lucide.createIcons();
 
         // --- State Management ---
-        const STORAGE_KEY = 'academia_ai_pro_v4_state';
-        
+        const STORAGE_KEY_PREFIX = 'academia_ai_doc_';
+        const CONFIG_KEY = 'academia_ai_config';
+        const INDEX_KEY = 'academia_ai_index';
+
+        let globalConfig = {
+            apiKey: "",
+            model: "gemini-2.0-flash"
+        };
+
+        let projectIndex = []; // [{id, title}]
+        let currentProjectId = "";
+
         const sections = [
             { id: 'title_page', name: 'Title Page', jpName: '表紙・基本情報', icon: 'layout-template' },
             { id: 'abstract', name: 'Abstract', jpName: '概要', icon: 'file-text' },
@@ -281,9 +571,11 @@
         ];
 
         let documentState = {
+            id: "",
             title: "未設定の論文",
             rules: "",
             referenceMaterials: [],
+            figures: [],
             content: { title_page: "", abstract: "", introduction: "", methods: "", results: "", discussion: "", conclusion: "", references: "", cover_letter: "" }
         };
 
@@ -291,13 +583,90 @@
         let isAiLoading = false;
         let saveTimeout = null;
 
-        const savedState = localStorage.getItem(STORAGE_KEY);
-        if (savedState) {
-            try {
-                const parsed = JSON.parse(savedState);
-                documentState = { ...documentState, ...parsed };
-                if(!documentState.referenceMaterials) documentState.referenceMaterials = [];
-            } catch (e) { console.error(e); }
+        // --- Data Persistence ---
+        function initData() {
+            // Load Config
+            const savedConfig = localStorage.getItem(CONFIG_KEY);
+            if (savedConfig) globalConfig = { ...globalConfig, ...JSON.parse(savedConfig) };
+
+            // Load Index
+            const savedIndex = localStorage.getItem(INDEX_KEY);
+            if (savedIndex) {
+                projectIndex = JSON.parse(savedIndex);
+            }
+
+            if (projectIndex.length === 0) {
+                createNewProject("最初の論文");
+            } else {
+                const lastId = localStorage.getItem('last_project_id') || projectIndex[0].id;
+                loadProject(lastId);
+            }
+        }
+
+        function createNewProject(title = "新しい論文") {
+            const id = 'doc_' + Date.now();
+            const newState = {
+                id: id,
+                title: title,
+                rules: "",
+                referenceMaterials: [],
+                figures: [],
+                content: { title_page: "", abstract: "", introduction: "", methods: "", results: "", discussion: "", conclusion: "", references: "", cover_letter: "" }
+            };
+            documentState = newState;
+            currentProjectId = id;
+            projectIndex.push({ id, title });
+            saveIndex();
+            saveProject(newState);
+            localStorage.setItem('last_project_id', id);
+            refreshProjectSelector();
+            updateUIState();
+            showToast('新規プロジェクトを作成しました', 'success');
+        }
+
+        function loadProject(id) {
+            const saved = localStorage.getItem(STORAGE_KEY_PREFIX + id);
+            if (saved) {
+                documentState = JSON.parse(saved);
+                currentProjectId = id;
+                localStorage.setItem('last_project_id', id);
+                currentSectionId = 'abstract';
+                updateUIState();
+                refreshProjectSelector();
+            }
+        }
+
+        function saveProject(state) {
+            localStorage.setItem(STORAGE_KEY_PREFIX + state.id, JSON.stringify(state));
+        }
+
+        function saveIndex() {
+            localStorage.setItem(INDEX_KEY, JSON.stringify(projectIndex));
+        }
+
+        function refreshProjectSelector() {
+            const sel = document.getElementById('project-selector');
+            sel.innerHTML = '';
+            projectIndex.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.title;
+                opt.selected = p.id === currentProjectId;
+                sel.appendChild(opt);
+            });
+        }
+
+        function deleteCurrentProject() {
+            if (projectIndex.length <= 1) return showToast('最後のプロジェクトは削除できません', 'error');
+            if (!confirm(`「${documentState.title}」を削除しますか？`)) return;
+
+            localStorage.removeItem(STORAGE_KEY_PREFIX + currentProjectId);
+            projectIndex = projectIndex.filter(p => p.id !== currentProjectId);
+            saveIndex();
+
+            const next = projectIndex[0].id;
+            loadProject(next);
+            showToast('削除しました', 'success');
         }
 
         // --- DOM Elements ---
@@ -321,11 +690,13 @@
             ruleBadge: document.getElementById('rule-badge'),
             sidebarRuleBadge: document.getElementById('sidebar-rule-badge'),
             btnApplyRule: document.getElementById('btn-apply-rule'),
-            
+            figSmallList: document.getElementById('fig-small-list'),
+            figEmptyState: document.getElementById('fig-empty-state'),
+
             specialToolbar: document.getElementById('special-toolbar'),
             btnGenerateCover: document.getElementById('btn-generate-cover'),
             btnTemplateTitle: document.getElementById('btn-template-title'),
-            
+
             mobileMenuBtn: document.getElementById('mobile-menu-btn'),
             mobileNavOverlay: document.getElementById('mobile-nav-overlay'),
             closeMobileNav: document.getElementById('close-mobile-nav')
@@ -340,7 +711,15 @@
             clearTimeout(saveTimeout);
             documentState.content[currentSectionId] = els.editorTextarea.value;
             saveTimeout = setTimeout(() => {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(documentState));
+                saveProject(documentState);
+                // Update Index title if changed
+                const idx = projectIndex.find(p => p.id === currentProjectId);
+                if (idx && idx.title !== documentState.title) {
+                    idx.title = documentState.title;
+                    saveIndex();
+                    refreshProjectSelector();
+                }
+
                 els.autoSaveStatus.classList.remove('opacity-0', 'saved-indicator');
                 void els.autoSaveStatus.offsetWidth;
                 els.autoSaveStatus.classList.add('saved-indicator');
@@ -348,7 +727,9 @@
         }
 
         function clearAllData() {
-            if(confirm("全てのデータを消去しますか？")) { localStorage.removeItem(STORAGE_KEY); location.reload(); }
+            if (confirm("全てのプロジェクトと設定を完全にリセットしますか？")) {
+                localStorage.clear(); location.reload();
+            }
         }
 
         // --- UI Rendering ---
@@ -377,10 +758,32 @@
                 els.refEmptyState.classList.add('hidden'); els.refBadge.classList.remove('hidden');
                 documentState.referenceMaterials.forEach(ref => {
                     const div = document.createElement('div');
-                    div.className = "flex items-center justify-between text-xs bg-gray-800 rounded px-2 py-1.5 text-gray-300 border border-gray-700";
-                    div.innerHTML = `<div class="flex items-center gap-1.5 overflow-hidden"><i data-lucide="file-text" class="w-3 h-3 text-blue-400 flex-shrink-0"></i><span class="truncate">${ref.title}</span></div>
+                    div.className = "flex items-center justify-between text-xs bg-gray-800 rounded px-2 py-1.5 text-gray-300 border border-gray-700 mb-1";
+                    div.innerHTML = `<div class="flex items-center gap-1.5 overflow-hidden"><i data-lucide="file-text" class="w-3 h-3 text-blue-400 flex-shrink-0"></i><span class="truncate" title="${ref.title}">${ref.title}</span></div>
                         <button onclick="removeReference('${ref.id}')" class="text-gray-500 hover:text-red-400 ml-2"><i data-lucide="trash-2" class="w-3 h-3"></i></button>`;
                     els.refList.appendChild(div);
+                });
+                lucide.createIcons();
+            }
+        }
+
+        function renderFigList() {
+            els.figSmallList.innerHTML = '';
+            if (!documentState.figures || documentState.figures.length === 0) {
+                els.figEmptyState.classList.remove('hidden');
+            } else {
+                els.figEmptyState.classList.add('hidden');
+                documentState.figures.forEach(fig => {
+                    const div = document.createElement('div');
+                    div.className = "relative group w-12 h-12 rounded border border-gray-700 overflow-hidden bg-gray-800 cursor-pointer";
+                    div.onclick = () => openFigureAnalysisModal(fig.id);
+                    div.innerHTML = `
+                        <img src="${fig.data}" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <i data-lucide="zoom-in" class="w-4 h-4 text-white"></i>
+                        </div>
+                    `;
+                    els.figSmallList.appendChild(div);
                 });
                 lucide.createIcons();
             }
@@ -394,29 +797,29 @@
             } else {
                 els.ruleBadge.classList.add('hidden'); els.sidebarRuleBadge.classList.add('hidden');
             }
-            renderRefList(); renderNav(); switchSection(currentSectionId, false);
+            renderRefList(); renderFigList(); renderNav(); switchSection(currentSectionId, false);
         }
 
         function switchSection(sectionId, saveFirst = true) {
             if (saveFirst) documentState.content[currentSectionId] = els.editorTextarea.value;
-            
+
             currentSectionId = sectionId;
             const secInfo = sections.find(s => s.id === sectionId);
-            
+
             els.currentSectionTitle.textContent = `${secInfo.name} (${secInfo.jpName})`;
             els.editorTextarea.value = documentState.content[sectionId] || '';
-            
+
             els.specialToolbar.classList.add('hidden');
             els.btnGenerateCover.classList.add('hidden');
             els.btnTemplateTitle.classList.add('hidden');
-            
+
             if (sectionId === 'cover_letter') {
                 els.specialToolbar.classList.remove('hidden'); els.btnGenerateCover.classList.remove('hidden');
             } else if (sectionId === 'title_page') {
                 els.specialToolbar.classList.remove('hidden'); els.btnTemplateTitle.classList.remove('hidden');
             }
 
-            updateWordCount(); renderNav(); if(saveFirst) triggerAutoSave();
+            updateWordCount(); renderNav(); if (saveFirst) triggerAutoSave();
             els.mobileNavOverlay.classList.add('hidden');
         }
 
@@ -441,24 +844,57 @@
         function openModal(id) { const m = document.getElementById(id); const c = m.querySelector('div'); m.classList.remove('hidden'); setTimeout(() => { m.classList.remove('opacity-0'); c.classList.remove('scale-95'); c.classList.add('scale-100'); }, 10); }
         function closeModal(id) { const m = document.getElementById(id); const c = m.querySelector('div'); m.classList.add('opacity-0'); c.classList.remove('scale-100'); c.classList.add('scale-95'); setTimeout(() => m.classList.add('hidden'), 300); }
         window.openRefModal = () => { document.getElementById('ref-title-input').value = ''; document.getElementById('ref-content-input').value = ''; openModal('ref-modal'); };
-        
-        document.getElementById('ref-file-input').addEventListener('change', e => {
-            const file = e.target.files[0]; if(!file) return;
-            if(!document.getElementById('ref-title-input').value) document.getElementById('ref-title-input').value = file.name;
-            const r = new FileReader(); r.onload = evt => document.getElementById('ref-content-input').value = evt.target.result; r.readAsText(file);
+
+        document.getElementById('ref-file-input').addEventListener('change', async e => {
+            const file = e.target.files[0]; if (!file) return;
+            const titleInput = document.getElementById('ref-title-input');
+            const contentArea = document.getElementById('ref-content-input');
+            if (!titleInput.value) titleInput.value = file.name;
+            const indicator = document.getElementById('file-loading-indicator');
+            indicator.classList.remove('hidden');
+            try {
+                if (file.name.endsWith('.pdf')) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+                    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    let text = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        text += content.items.map(item => item.str).join(' ') + '\n';
+                    }
+                    contentArea.value = text;
+                } else if (file.name.endsWith('.docx')) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    contentArea.value = result.value;
+                } else if (file.name.endsWith('.xlsx')) {
+                    const data = await file.arrayBuffer();
+                    const workbook = XLSX.read(data);
+                    let text = '';
+                    workbook.SheetNames.forEach(sheetName => {
+                        text += `--- Sheet: ${sheetName} ---\n`;
+                        text += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName], { FS: '\t' }) + '\n\n';
+                    });
+                    contentArea.value = text;
+                } else {
+                    const r = new FileReader(); r.onload = evt => contentArea.value = evt.target.result; r.readAsText(file);
+                }
+                showToast('ファイルを解析しました', 'success');
+            } catch (err) { console.error(err); showToast('解析失敗', 'error'); } finally { indicator.classList.add('hidden'); }
         });
 
         window.addReference = () => {
             const t = document.getElementById('ref-title-input').value.trim(), c = document.getElementById('ref-content-input').value.trim();
-            if(!t || !c) return showToast('入力してください', 'error');
-            if(c.length > 20000) return showToast('2万文字以下にしてください', 'error');
-            documentState.referenceMaterials.push({ id: 'ref_'+Date.now(), title: t, content: c });
+            if (!t || !c) return showToast('入力してください', 'error');
+            if (c.length > 50000) return showToast('文字数が多すぎます', 'error');
+            documentState.referenceMaterials.push({ id: 'ref_' + Date.now(), title: t, content: c });
             renderRefList(); triggerAutoSave(); closeModal('ref-modal'); showToast('追加しました', 'success');
         };
         window.removeReference = (id) => { documentState.referenceMaterials = documentState.referenceMaterials.filter(r => r.id !== id); renderRefList(); triggerAutoSave(); };
 
         // --- Rules Setup ---
-        window.openRuleModal = () => { document.getElementById('rule-result-area').value = documentState.rules; if(documentState.rules) document.getElementById('rule-result-container').classList.remove('hidden'); openModal('rule-modal'); };
+        window.openRuleModal = () => { document.getElementById('rule-result-area').value = documentState.rules; if (documentState.rules) document.getElementById('rule-result-container').classList.remove('hidden'); openModal('rule-modal'); };
         window.saveRules = () => { documentState.rules = document.getElementById('rule-result-area').value.trim(); updateUIState(); triggerAutoSave(); closeModal('rule-modal'); showToast('規定を保存・適用しました', 'success'); };
 
         // --- Export & CSV ---
@@ -466,28 +902,60 @@
         document.getElementById('export-btn').addEventListener('click', () => {
             documentState.content[currentSectionId] = els.editorTextarea.value;
             let out = `# ${documentState.title}\n\n`;
-            sections.forEach(sec => { if(documentState.content[sec.id]?.trim()) out += `## ${sec.name}\n\n${documentState.content[sec.id]}\n\n`; });
+            sections.forEach(sec => { if (documentState.content[sec.id]?.trim()) out += `## ${sec.name}\n\n${documentState.content[sec.id]}\n\n`; });
             document.getElementById('export-textarea').value = out; openModal('export-modal');
         });
         window.copyExportText = () => { document.getElementById('export-textarea').select(); document.execCommand('copy'); showToast('コピーしました', 'success'); };
 
-        // --- Gemini API ---
-        const apiKey = ""; 
+        // --- Settings ---
+        window.openSettingsModal = () => {
+            document.getElementById('api-key-input').value = globalConfig.apiKey || '';
+            document.getElementById('model-select').value = globalConfig.model || 'gemini-2.0-flash';
+            openModal('settings-modal');
+        };
+        window.saveSettings = () => {
+            globalConfig.apiKey = document.getElementById('api-key-input').value.trim();
+            globalConfig.model = document.getElementById('model-select').value;
+            localStorage.setItem(CONFIG_KEY, JSON.stringify(globalConfig));
+            closeModal('settings-modal');
+            showToast('設定を保存しました', 'success');
+        };
 
+        // --- Gemini API ---
         function getSystemInstruction() {
             let base = `あなたは優秀な学術論文執筆アシスタント「Academia AI」です。回答は原則として日本語で行い、学術的で洗練されたトーンを保つこと。Markdown形式で読みやすく整形すること。`;
             if (documentState.rules) base += `\n\n【重要：投稿規定】\n以下の規定を厳守して生成・推敲してください。\n"""\n${documentState.rules}\n"""`;
             if (documentState.referenceMaterials.length > 0) {
                 base += `\n\n【重要：参考資料】\n以下の資料を優先的に参照し、事実に基づいた記述を行ってください。\n`;
-                documentState.referenceMaterials.forEach((r, i) => base += `\n--- 資料${i+1}: ${r.title} ---\n${r.content}\n`);
+                documentState.referenceMaterials.forEach((r, i) => base += `\n--- 資料${i + 1}: ${r.title} ---\n${r.content}\n`);
             }
             return base;
         }
 
-        async function callGemini(prompt, useSearch = false) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: getSystemInstruction() }] } };
-            if (useSearch) payload.tools = [{ google_search: {} }];
+        async function callGemini(prompt, useSearch = false, imageData = null) {
+            if (!globalConfig.apiKey) {
+                showToast('APIキーが設定されていません。サイドバーの「API設定」から設定してください。', 'error');
+                throw new Error('API Key missing');
+            }
+            const model = globalConfig.model || (imageData ? "gemini-1.5-flash" : "gemini-2.0-flash");
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${globalConfig.apiKey}`;
+            const parts = [{ text: prompt }];
+            if (imageData) {
+                const b64 = imageData.split(',')[1];
+                const mime = imageData.split(',')[0].split(':')[1].split(';')[0];
+                parts.push({ inline_data: { mime_type: mime, data: b64 } });
+            }
+            const payload = {
+                contents: [{ parts: parts }],
+                systemInstruction: { parts: [{ text: getSystemInstruction() }] }
+            };
+            if (useSearch) {
+                payload.tools = [{
+                    google_search_retrieval: {
+                        dynamic_retrieval_config: { mode: "DYNAMIC", dynamic_threshold: 0.06 }
+                    }
+                }];
+            }
 
             // リトライロジック
             for (let i = 0; i < 3; i++) {
@@ -495,7 +963,7 @@
                     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (!response.ok) throw new Error(`API Error: ${response.status}`);
                     const result = await response.json();
-                    
+
                     let sourcesHtml = '';
                     const gm = result.candidates?.[0]?.groundingMetadata;
                     if (gm?.groundingAttributions?.length > 0) {
@@ -508,13 +976,13 @@
                         }
                     }
 
-                    return { 
-                        text: result.candidates?.[0]?.content?.parts?.[0]?.text || "", 
+                    return {
+                        text: result.candidates?.[0]?.content?.parts?.[0]?.text || "",
                         sourcesHtml: sourcesHtml
                     };
-                } catch (e) { 
-                    if (i === 2) throw e; 
-                    await new Promise(r => setTimeout(r, 2000)); 
+                } catch (e) {
+                    if (i === 2) throw e;
+                    await new Promise(r => setTimeout(r, 2000));
                 }
             }
         }
@@ -522,29 +990,29 @@
         // Action Handlers
         window.extractRules = async () => {
             const url = document.getElementById('rule-url-input').value.trim(), text = document.getElementById('rule-text-input').value.trim();
-            if(!url && !text) return showToast('URLかテキストを入力', 'error');
+            if (!url && !text) return showToast('URLかテキストを入力', 'error');
             const btn = document.getElementById('rule-extract-btn'); const orig = btn.innerHTML; btn.innerHTML = '解析中...'; btn.disabled = true;
             try {
                 const res = await callGemini(`以下の情報から、学術論文の投稿規定（文字数、フォーマット等）を抽出し、箇条書きでまとめて。\n【URL】${url}\n【テキスト】${text}`, !!url);
                 document.getElementById('rule-result-area').value = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim(); document.getElementById('rule-result-container').classList.remove('hidden'); showToast('抽出完了', 'success');
-            } catch(e) { showToast('解析失敗', 'error'); } finally { btn.innerHTML = orig; btn.disabled = false; }
+            } catch (e) { showToast('解析失敗', 'error'); } finally { btn.innerHTML = orig; btn.disabled = false; }
         };
 
         window.generateTableAndDesc = async () => {
-            const csv = document.getElementById('csv-input').value.trim(); if(!csv) return;
+            const csv = document.getElementById('csv-input').value.trim(); if (!csv) return;
             const btn = document.getElementById('csv-generate-btn'); btn.disabled = true; btn.innerHTML = "処理中...";
             try {
-                const mdTable = csv.split('\n').map((l,i) => { const c = l.split(',').map(x=>x.trim()); return '| '+c.join(' | ')+' |\n' + (i===0?'|'+c.map(()=>'---').join('|')+'|\n':''); }).join('');
+                const mdTable = csv.split('\n').map((l, i) => { const c = l.split(',').map(x => x.trim()); return '| ' + c.join(' | ') + ' |\n' + (i === 0 ? '|' + c.map(() => '---').join('|') + '|\n' : ''); }).join('');
                 const res = await callGemini(`以下のCSVデータの学術的な表の解説文を作成して。\n\n${csv}`);
                 const insertText = `\n\n${mdTable}\n\n**表の解説・分析:**\n${res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim()}\n\n`;
-                
+
                 const start = els.editorTextarea.selectionStart;
                 const end = els.editorTextarea.selectionEnd;
                 const text = els.editorTextarea.value;
                 els.editorTextarea.value = text.substring(0, start) + insertText + text.substring(end);
-                
+
                 updateWordCount(); triggerAutoSave(); closeModal('csv-modal'); showToast('挿入しました', 'success');
-            } catch(e) { showToast('失敗', 'error'); } finally { btn.disabled = false; btn.innerHTML = "挿入"; }
+            } catch (e) { showToast('失敗', 'error'); } finally { btn.disabled = false; btn.innerHTML = "挿入"; }
         };
 
         // --- Editor Actions (バグ修正済み) ---
@@ -554,14 +1022,14 @@
             let end = els.editorTextarea.selectionEnd;
             let targetText = text.substring(start, end);
             let isWholeText = false;
-            
+
             // 何も選択されていない場合
             if (!targetText) {
                 // 箇条書き展開の場合のみ、文字数が多ければエラーにする（全上書き事故防止）
                 if (actionType === 'bullet-to-text' && text.trim().length > 300) {
                     return showToast('展開したい箇条書きの部分をドラッグして選択してください', 'error');
                 }
-                
+
                 // それ以外（または文字数が少ない箇条書き）の場合は全体を対象とする
                 targetText = text;
                 start = 0;
@@ -572,7 +1040,7 @@
             if (!targetText.trim()) return showToast('テキストを入力または選択してください', 'error');
 
             let promptMsg = '', actionLabel = '';
-            
+
             if (actionType === 'apply-rule') {
                 if (!documentState.rules) return showToast('先に投稿規定を設定してください', 'error');
                 promptMsg = `以下のテキストを、現在設定されている【投稿規定】（文字数、文体、フォーマット等）を完全に満たすように厳密に修正・調整してください。解説や挨拶は一切不要です。規定に合わせて修正された後のテキストのみを出力してください。規定に文字数制限がある場合は、必ずその制限内に収めてください。\n\n【対象テキスト】\n"""\n${targetText}\n"""`;
@@ -581,7 +1049,7 @@
             else if (actionType === 'bullet-to-text') {
                 promptMsg = `以下の箇条書きやメモから、学術論文に相応しい論理的な本文（パラグラフ）を作成してください。解説不要で生成本文のみ出力してください。\n\n【箇条書きメモ】\n"""\n${targetText}\n"""`;
                 actionLabel = '箇条書きから本文生成';
-            } 
+            }
             else {
                 const acts = { 'proofread': '文法を修正し自然な日本語に', 'academic': '学術的・フォーマルな表現に', 'expand': '論理を補強し詳細に膨らませて' };
                 promptMsg = `以下のテキストを${acts[actionType]}してください。解説不要で修正後のみ出力してください。\n\n【対象テキスト】\n"""\n${targetText}\n"""`;
@@ -594,29 +1062,29 @@
             try {
                 const res = await callGemini(promptMsg);
                 const newText = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
-                
+
                 appendChat('ai', `処理完了。反映またはコピーしてください：\n\n${newText}`);
-                
-                const confirmMsg = isWholeText ? 
-                    `${actionLabel}が完了しました。エディタ全体を提案内容で上書きしますか？` : 
+
+                const confirmMsg = isWholeText ?
+                    `${actionLabel}が完了しました。エディタ全体を提案内容で上書きしますか？` :
                     `${actionLabel}が完了しました。選択部分を提案内容で上書きしますか？`;
 
                 if (confirm(confirmMsg)) {
                     els.editorTextarea.value = text.substring(0, start) + newText + text.substring(end);
                     updateWordCount(); triggerAutoSave(); showToast('テキストを更新しました', 'success');
                 }
-            } catch (error) { 
-                showToast('処理に失敗しました', 'error'); 
-            } finally { 
-                isAiLoading = false; els.aiLoading.classList.add('hidden'); 
+            } catch (error) {
+                showToast('処理に失敗しました', 'error');
+            } finally {
+                isAiLoading = false; els.aiLoading.classList.add('hidden');
             }
         };
 
         // --- Specific Features ---
         window.insertTitleTemplate = () => {
             const template = `論文タイトル：${documentState.title}\n\n著者名：\n所属機関：\n連絡先 (Email)：\n\n概要 (Abstract) 文字数：\n本文文字数：\n図表の数：\n\nキーワード（3〜5個）：`;
-            if(els.editorTextarea.value.trim() !== '') {
-                if(!confirm('エディタにテキストがあります。末尾にテンプレートを追加しますか？')) return;
+            if (els.editorTextarea.value.trim() !== '') {
+                if (!confirm('エディタにテキストがあります。末尾にテンプレートを追加しますか？')) return;
                 els.editorTextarea.value += '\n\n' + template;
             } else {
                 els.editorTextarea.value = template;
@@ -627,13 +1095,13 @@
         window.generateCoverLetter = async () => {
             const btn = document.getElementById('btn-generate-cover');
             const orig = btn.innerHTML; btn.innerHTML = '生成中...'; btn.disabled = true;
-            
+
             try {
-                documentState.content[currentSectionId] = els.editorTextarea.value; 
+                documentState.content[currentSectionId] = els.editorTextarea.value;
                 const abstract = documentState.content['abstract'] || '';
                 const conclusion = documentState.content['conclusion'] || '';
-                
-                if(!abstract && !conclusion) {
+
+                if (!abstract && !conclusion) {
                     throw new Error('AbstractまたはConclusionにテキストを入力してから実行してください。');
                 }
 
@@ -647,18 +1115,18 @@
 
                 isAiLoading = true; els.aiLoading.classList.remove('hidden');
                 appendChat('user', `[操作: カバーレターの自動生成]`);
-                
+
                 const res = await callGemini(prompt);
                 const newText = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
-                
+
                 els.editorTextarea.value = newText;
                 updateWordCount(); triggerAutoSave();
                 appendChat('ai', `カバーレターのドラフトを作成し、エディタに挿入しました。ジャーナル名や日付、連絡先などを適宜修正してください。`);
                 showToast('カバーレターを生成しました', 'success');
 
-            } catch(e) { 
-                showToast(e.message || '生成失敗', 'error'); 
-            } finally { 
+            } catch (e) {
+                showToast(e.message || '生成失敗', 'error');
+            } finally {
                 btn.innerHTML = orig; btn.disabled = false;
                 isAiLoading = false; els.aiLoading.classList.add('hidden');
             }
@@ -676,22 +1144,258 @@
             } catch (error) { showToast('通信エラー', 'error'); } finally { isAiLoading = false; els.aiLoading.classList.add('hidden'); }
         });
         window.setChatInput = (t) => { els.chatInput.value = t; els.chatInput.focus(); };
-        els.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); els.chatForm.dispatchEvent(new Event('submit')); }});
-        els.chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
+        els.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); els.chatForm.dispatchEvent(new Event('submit')); } });
+        els.chatInput.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
 
         function appendChat(role, text, sources = '') {
             const div = document.createElement('div'); div.className = 'flex gap-3 ' + (role === 'user' ? 'flex-row-reverse' : '');
-            let html = role === 'user' ? text.replace(/\n/g, '<br>') : `<div class="markdown-body">${text.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<strong>$1</strong><br>').replace(/^\* (.*$)/gim, '<ul><li>$1</li></ul>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>`;
-            div.innerHTML = `<div class="w-8 h-8 rounded-full bg-${role==='user'?'gray-200':'indigo-100'} flex items-center justify-center flex-shrink-0 text-${role==='user'?'gray-600':'indigo-600'}"><i data-lucide="${role==='user'?'user':'bot'}" class="w-4 h-4"></i></div><div class="bg-${role==='user'?'indigo-600 text-white':'white border border-gray-200 text-gray-800'} rounded-2xl ${role==='user'?'rounded-tr-none':'rounded-tl-none'} p-3 text-sm shadow-sm max-w-[85%]">${html}${sources}</div>`;
+
+            let html = '';
+            if (role === 'user') {
+                html = text.replace(/\n/g, '<br>');
+            } else {
+                // 非常に簡易的なMarkdownパース
+                let processedText = text
+                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                    .replace(/^## (.*$)/gim, '<h2 class="font-bold border-b border-gray-100 mb-2 mt-4 pb-1 text-base">$1</h2>')
+                    .replace(/^# (.*$)/gim, '<h1 class="text-lg font-bold mb-4">$1</h1>')
+                    .replace(/^\* (.*$)/gim, '<li>$1</li>')
+                    .replace(/^\- (.*$)/gim, '<li>$1</li>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 rounded text-red-500">$1</code>')
+                    .replace(/\n\n/g, '</p><p>')
+                    .replace(/\n/g, '<br>');
+
+                // リストのラップ
+                if (processedText.includes('<li>')) {
+                    processedText = processedText.replace(/(<li>.*<\/li>)/gms, '<ul class="list-disc pl-5 my-2">$1</ul>');
+                }
+
+                html = `<div class="markdown-body"><p>${processedText}</p></div>`;
+            }
+
+            div.innerHTML = `<div class="w-8 h-8 rounded-full bg-${role === 'user' ? 'gray-200' : 'indigo-100'} flex items-center justify-center flex-shrink-0 text-${role === 'user' ? 'gray-600' : 'indigo-600'}"><i data-lucide="${role === 'user' ? 'user' : 'bot'}" class="w-4 h-4"></i></div><div class="bg-${role === 'user' ? 'indigo-600 text-white' : 'white border border-gray-200 text-gray-800'} rounded-2xl ${role === 'user' ? 'rounded-tr-none' : 'rounded-tl-none'} p-3 text-sm shadow-sm max-w-[85%] overflow-hidden">${html}${sources}</div>`;
             els.chatHistory.appendChild(div); lucide.createIcons(); els.chatHistory.scrollTop = els.chatHistory.scrollHeight;
         }
 
         els.editorTextarea.addEventListener('input', () => { updateWordCount(); triggerAutoSave(); });
         els.docTitleInput.addEventListener('input', (e) => { documentState.title = e.target.value; triggerAutoSave(); });
 
+        initData();
+        updateUIState();
+
+        // --- Figure Management ---
+        window.openFigureModal = () => {
+            const modalId = 'fig-upload-modal';
+            if (!document.getElementById(modalId)) {
+                const div = document.createElement('div');
+                div.id = modalId;
+                div.className = "fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity";
+                div.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-2xl w-[500px] max-w-[90vw] p-6 transform scale-95 transition-transform">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
+                            <h3 class="text-lg font-bold flex items-center gap-2"><i data-lucide="image" class="text-indigo-600"></i> 図表・画像の追加</h3>
+                            <button onclick="closeModal('${modalId}')" class="text-gray-500 hover:text-gray-800"><i data-lucide="x"></i></button>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">画像ファイル</label>
+                            <input type="file" id="fig-file-input" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">図のタイトル/ラベル</label>
+                            <input type="text" id="fig-note-input" class="w-full p-2 border border-gray-300 rounded text-sm" placeholder="図1: ○○の推移">
+                        </div>
+                        <div class="flex justify-end gap-3 mt-4">
+                            <button onclick="closeModal('${modalId}')" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded transition text-sm">キャンセル</button>
+                            <button onclick="addFigure()" class="px-4 py-2 bg-indigo-600 text-white rounded transition text-sm font-bold">追加</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(div); lucide.createIcons();
+            }
+            openModal(modalId);
+        };
+
+        window.addFigure = () => {
+            const file = document.getElementById('fig-file-input').files[0];
+            if (!file) return showToast('画像を選択してください', 'error');
+            const note = document.getElementById('fig-note-input').value;
+            const reader = new FileReader();
+            reader.onload = e => {
+                const fig = { id: 'fig_' + Date.now(), data: e.target.result, note: note || file.name, analysis: "" };
+                if (!documentState.figures) documentState.figures = [];
+                documentState.figures.push(fig);
+                renderFigList(); triggerAutoSave(); closeModal('fig-upload-modal');
+                showToast('図を追加しました', 'success');
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.openFigureAnalysisModal = (id) => {
+            const fig = documentState.figures.find(f => f.id === id);
+            const modalId = 'fig-analysis-modal';
+            if (!document.getElementById(modalId)) {
+                const div = document.createElement('div');
+                div.id = modalId;
+                div.className = "fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden opacity-0 transition-opacity";
+                div.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-2xl w-[1000px] max-w-[95vw] h-[85vh] flex overflow-hidden transform scale-95 transition-transform">
+                        <div class="w-1/2 bg-gray-100 flex items-center justify-center p-4 border-r">
+                            <img id="fig-preview-img" class="max-w-full max-h-full shadow-lg">
+                        </div>
+                        <div class="w-1/2 flex flex-col p-6 bg-white overflow-y-auto">
+                            <div class="flex justify-between items-start mb-4 border-b pb-2">
+                                <h3 id="fig-preview-title" class="font-bold text-lg text-gray-800"></h3>
+                                <button onclick="closeModal('${modalId}')" class="p-1 hover:bg-gray-100 rounded"><i data-lucide="x"></i></button>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[10px] text-indigo-600 font-bold uppercase tracking-widest mb-2">AIによる画像解析・注釈生成</p>
+                                <div id="fig-analysis-result" class="text-sm text-gray-700 bg-gray-50 p-5 rounded-xl border border-gray-100 min-h-[200px] leading-relaxed">
+                                    AIに解析を依頼してください。画像の内容（グラフの数値、表の構成、視覚的特徴など）を読み取ります。
+                                </div>
+                                <button onclick="analyzeFigureCurrent()" id="btn-analyze-fig" class="w-full mt-5 flex items-center justify-center gap-2 bg-indigo-600 text-white p-3.5 rounded-xl font-bold hover:bg-indigo-700 transition shadow-md">
+                                    <i data-lucide="sparkles" class="w-5 h-5"></i> 画像をAIで解析する
+                                </button>
+                                <button onclick="insertFigDescription()" id="btn-insert-fig-desc" class="hidden w-full mt-3 flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 p-3.5 rounded-xl font-bold hover:bg-emerald-100 transition">
+                                    <i data-lucide="pencil-line" class="w-5 h-5"></i> この内容を本文に挿入
+                                </button>
+                            </div>
+                            <div class="mt-8 pt-4 border-t flex justify-end">
+                                <button id="btn-delete-fig" class="text-red-500 hover:text-red-700 text-xs flex items-center gap-1 font-medium"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> この画像を削除</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(div); lucide.createIcons();
+            }
+            const modal = document.getElementById(modalId);
+            modal.dataset.figId = id;
+            document.getElementById('fig-preview-img').src = fig.data;
+            document.getElementById('fig-preview-title').textContent = fig.note;
+            document.getElementById('fig-analysis-result').innerHTML = fig.analysis || 'AIに解析を依頼してください。';
+            document.getElementById('btn-insert-fig-desc').classList.toggle('hidden', !fig.analysis);
+            document.getElementById('btn-delete-fig').onclick = () => {
+                if (confirm('画像を削除しますか？')) {
+                    documentState.figures = documentState.figures.filter(f => f.id !== id);
+                    renderFigList(); triggerAutoSave(); closeModal(modalId);
+                }
+            };
+            openModal(modalId);
+        };
+
+        window.analyzeFigureCurrent = async () => {
+            const modal = document.getElementById('fig-analysis-modal');
+            const id = modal.dataset.figId;
+            const fig = documentState.figures.find(f => f.id === id);
+            const btn = document.getElementById('btn-analyze-fig');
+            const resultArea = document.getElementById('fig-analysis-result');
+            btn.disabled = true; btn.innerHTML = '<div class="loader"></div><span>解析中...</span>';
+            resultArea.innerHTML = '<span class="italic text-gray-400">AIが画像を解析しています... (10〜20秒かかる場合があります)</span>';
+            try {
+                const res = await callGemini(
+                    "この画像（図または表）の内容を学術的な視点で詳しく解析してください。以下の構成で出力してください：\n1. 図説（キャプション）案: 短く的確なタイトル\n2. 内容の要約: 何を示しているか\n3. 詳細な分析: 数値、傾向、特筆すべき点\n解説や挨拶は不要です。",
+                    false, fig.data
+                );
+                fig.analysis = res.text.replace(/^### (.*$)/gim, '<strong>$1</strong><br>').replace(/\n/g, '<br>');
+                resultArea.innerHTML = fig.analysis;
+                document.getElementById('btn-insert-fig-desc').classList.remove('hidden');
+                triggerAutoSave();
+            } catch (e) { showToast('解析失敗', 'error'); resultArea.innerHTML = '解析に失敗しました。'; } finally {
+                btn.disabled = false; btn.innerHTML = '<i data-lucide="sparkles" class="w-5 h-5"></i> 画像をAIで解析する';
+                lucide.createIcons();
+            }
+        };
+
+        window.insertFigDescription = () => {
+            const modal = document.getElementById('fig-analysis-modal');
+            const fig = documentState.figures.find(f => f.id === modal.dataset.figId);
+            const insert = `\n\n【図表：${fig.note}】\n${fig.analysis.replace(/<br>/g, '\n').replace(/<.*?>/g, '')}\n\n`;
+            const start = els.editorTextarea.selectionStart;
+            const end = els.editorTextarea.selectionEnd;
+            const text = els.editorTextarea.value;
+            els.editorTextarea.value = text.substring(0, start) + insert + text.substring(end);
+            updateWordCount(); triggerAutoSave(); closeModal('fig-analysis-modal');
+            showToast('本文に挿入しました', 'success');
+        };
+
+        // --- Manuscript Import Logic ---
+        window.openImportManuscriptModal = () => openModal('import-manuscript-modal');
+
+        window.processManuscriptImport = async () => {
+            const input = document.getElementById('import-manuscript-input');
+            const file = input.files[0];
+            if (!file) return showToast('ファイルを選択してください', 'error');
+
+            const indicator = document.getElementById('import-loading-indicator');
+            const btn = document.getElementById('btn-do-import');
+            indicator.classList.remove('hidden');
+            btn.disabled = true;
+
+            try {
+                let fullText = "";
+                if (file.name.endsWith('.pdf')) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+                    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        fullText += content.items.map(item => item.str).join(' ') + '\n';
+                    }
+                } else if (file.name.endsWith('.docx')) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    fullText = result.value;
+                } else {
+                    fullText = await file.text();
+                }
+
+                if (fullText.length < 100) throw new Error("テキストが短すぎます");
+
+                // AI call to split sections
+                const res = await callGemini(`
+以下の学術論文の原稿を、指定されたセクションごとに分割してください。
+分割した結果を、以下のJSONフォーマットでのみ返してください。余計な解説は不要です。
+
+【JSONフォーマット例】
+{
+  "title_page": "...",
+  "abstract": "...",
+  "introduction": "...",
+  "methods": "...",
+  "results": "...",
+  "discussion": "...",
+  "conclusion": "...",
+  "references": "...",
+  "cover_letter": "..."
+}
+
+【原稿テキスト】
+${fullText}
+                `);
+
+                const jsonStr = res.text.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+                const sectionsData = JSON.parse(jsonStr);
+
+                // Create new project with the data
+                createNewProject(`${file.name.split('.')[0]} (インポート)`);
+                documentState.content = { ...documentState.content, ...sectionsData };
+
+                updateUIState();
+                triggerAutoSave();
+                closeModal('import-manuscript-modal');
+                showToast('原稿をインポートし、各セクションに配置しました', 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('インポートに失敗しました。ファイル形式やAIの応答を確認してください。', 'error');
+            } finally {
+                indicator.classList.add('hidden');
+                btn.disabled = false;
+            }
+        };
         updateUIState();
     </script>
 </body>
+
 </html>
-
-
