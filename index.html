@@ -429,10 +429,11 @@
                 <div class="flex justify-end mb-4"><button onclick="extractRules()" id="rule-extract-btn"
                         class="px-4 py-2 bg-gray-800 text-white rounded transition text-sm flex items-center gap-2"><i
                             data-lucide="scan-text" class="w-4 h-4"></i> 解析して抽出</button></div>
-                <div id="rule-result-container" class="hidden border-t border-gray-200 pt-4 mt-2">
-                    <label class="block text-sm font-bold text-emerald-700 mb-1">抽出された規定ルール (編集可能)</label>
-                    <textarea id="rule-result-area"
-                        class="w-full h-40 p-3 bg-emerald-50 border border-emerald-200 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"></textarea>
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-emerald-700 mb-1">現在の適用ルール (これを保存します)</label>
+                    <textarea id="rule-active-area"
+                        class="w-full h-48 p-3 bg-emerald-50 border border-emerald-200 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                        placeholder="適用中のルールがここに表示されます。手動で編集も可能です。"></textarea>
                 </div>
             </div>
             <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
@@ -928,20 +929,11 @@
         window.openRuleModal = () => {
             document.getElementById('rule-url-input').value = '';
             document.getElementById('rule-text-input').value = '';
-            document.getElementById('rule-result-area').value = documentState.rules || '';
-            if (documentState.rules) {
-                document.getElementById('rule-result-container').classList.remove('hidden');
-            } else {
-                document.getElementById('rule-result-container').classList.add('hidden');
-            }
+            document.getElementById('rule-active-area').value = documentState.rules || '';
             openModal('rule-modal');
         };
         window.saveRules = () => {
-            let rules = document.getElementById('rule-result-area').value.trim();
-            // 解析結果が空で、直接入力欄にテキストがある場合はそちらを採用
-            if (!rules) {
-                rules = document.getElementById('rule-text-input').value.trim();
-            }
+            const rules = document.getElementById('rule-active-area').value.trim();
             documentState.rules = rules;
             updateUIState();
             triggerAutoSave();
@@ -1002,18 +994,27 @@
                 systemInstruction: { parts: [{ text: getSystemInstruction() }] }
             };
             if (useSearch) {
+                // Gemini 2.0 Flash grounding configuration
                 payload.tools = [{
                     google_search_retrieval: {
-                        dynamic_retrieval_config: { mode: "DYNAMIC", dynamic_threshold: 0.06 }
+                        // mode/threshold is often required for valid 2.0 dynamic retrieval
+                        dynamic_retrieval_config: {
+                            mode: "DYNAMIC",
+                            dynamic_threshold: 0.3
+                        }
                     }
                 }];
             }
 
-            // リトライロジック
+            // --- Retry Logic ---
             for (let i = 0; i < 3; i++) {
                 try {
                     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                    if (!response.ok) {
+                        const errData = await response.json().catch(() => ({}));
+                        const errMsg = errData.error?.message || response.statusText;
+                        throw new Error(`API Error: ${response.status} - ${errMsg}`);
+                    }
                     const result = await response.json();
 
                     let sourcesHtml = '';
@@ -1042,11 +1043,14 @@
         // Action Handlers
         window.extractRules = async () => {
             const url = document.getElementById('rule-url-input').value.trim(), text = document.getElementById('rule-text-input').value.trim();
-            if (!url && !text) return showToast('URLかテキストを入力', 'error');
+            if (!url && !text) return showToast('URLかテキストを入力してください', 'error');
             const btn = document.getElementById('rule-extract-btn'); const orig = btn.innerHTML; btn.innerHTML = '解析中...'; btn.disabled = true;
             try {
-                const res = await callGemini(`以下の情報から、学術論文の投稿規定（文字数、フォーマット等）を抽出し、箇条書きでまとめて。\n【URL】${url}\n【テキスト】${text}`, !!url);
-                document.getElementById('rule-result-area').value = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim(); document.getElementById('rule-result-container').classList.remove('hidden'); showToast('抽出完了', 'success');
+                const res = await callGemini(`以下の情報から、学術論文の投稿規定（文字数、フォーマット等）を抽出し、箇条書きでまとめて。余計な挨拶は不要。\n【URL】${url}\n【テキスト】${text}`, !!url);
+                const activeArea = document.getElementById('rule-active-area');
+                const extracted = res.text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
+                activeArea.value = (activeArea.value ? activeArea.value + '\n\n' : '') + extracted;
+                showToast('抽出結果を追加しました', 'success');
             } catch (e) { showToast('解析失敗', 'error'); } finally { btn.innerHTML = orig; btn.disabled = false; }
         };
 
@@ -1455,10 +1459,10 @@ ${fullText}
                 updateUIState();
                 triggerAutoSave();
                 closeModal('import-manuscript-modal');
-                showToast('原稿をインポートし、各セクションに配置しました', 'success');
+                showToast('原稿をインポートしました', 'success');
             } catch (err) {
                 console.error(err);
-                showToast('インポートに失敗しました。ファイル形式やAIの応答を確認してください。', 'error');
+                showToast('インポート失敗', 'error');
             } finally {
                 indicator.classList.add('hidden');
                 btn.disabled = false;
