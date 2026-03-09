@@ -584,6 +584,7 @@
             { id: 'results', name: 'Results', jpName: '結果', icon: 'bar-chart-2' },
             { id: 'discussion', name: 'Discussion', jpName: '考察', icon: 'message-square' },
             { id: 'conclusion', name: 'Conclusion', jpName: '結論', icon: 'check-square' },
+            { id: 'acknowledgments', name: 'Acknowledgments', jpName: '謝辞', icon: 'heart' },
             { id: 'references', name: 'References', jpName: '参考文献', icon: 'bookmark' },
             { id: 'cover_letter', name: 'Cover Letter', jpName: 'カバーレター', icon: 'mail' }
         ];
@@ -594,7 +595,7 @@
             rules: "",
             referenceMaterials: [],
             figures: [],
-            content: { title_page: "", abstract: "", introduction: "", methods: "", results: "", discussion: "", conclusion: "", references: "", cover_letter: "" }
+            content: { title_page: "", abstract: "", introduction: "", methods: "", results: "", discussion: "", conclusion: "", acknowledgments: "", references: "", cover_letter: "" }
         };
 
         let currentSectionId = 'abstract';
@@ -1403,30 +1404,33 @@
 
                 if (fullText.length < 100) throw new Error("テキストが短すぎます");
 
-                // AI call to split sections using markers instead of JSON for robustness
+                // 長文に対応するため、AIには分割位置（冒頭フレーズ）だけを特定させる
                 const res = await callGemini(`
-以下の学術論文の原稿を、指定されたセクションごとに分割してください。
-各セクションの開始位置に、必ず以下のマーカー名 [SECTION:セクション名] という形式で行頭に挿入してください。
-マーカー以外の余計な解説（「承知しました」「以下に分割します」等）は一切含めないでください。
+以下の学術論文の原稿から、各セクションが開始される「冒頭のフレーズ（約100文字程度）」を正確に特定してください。
+全文を出力する必要はありません。各セクションの境界（開始位置）がわかるように冒頭部分のみを出力してください。
+特定できた箇所の冒頭に必ず [SECTION:キー名] を付けて出力してください。
 
-【使用するマーカー】
-[SECTION:title_page]
+【抽出対象のセクション名】
+title_page, abstract, introduction, methods, results, discussion, conclusion, acknowledgments, references, cover_letter
+
+【出力形式の例】
 [SECTION:abstract]
+Abstract: Previous research has shown that... (ここから開始)
+
 [SECTION:introduction]
-[SECTION:methods]
-[SECTION:results]
-[SECTION:discussion]
-[SECTION:conclusion]
-[SECTION:references]
-[SECTION:cover_letter]
+1. Introduction. The field of AI has...
+
+【重要】
+必ず、原文にあるテキストをそのまま（一字一句違わずに）引用してください。
+該当するセクションが見当たらない場合は、そのセクションは含めないでください。
 
 【原稿テキスト】
 ${fullText}
                 `);
 
                 const rawText = res.text;
-                const sectionsData = {};
-                const keys = ["title_page", "abstract", "introduction", "methods", "results", "discussion", "conclusion", "references", "cover_letter"];
+                const anchors = [];
+                const keys = ["title_page", "abstract", "introduction", "methods", "results", "discussion", "conclusion", "acknowledgments", "references", "cover_letter"];
 
                 keys.forEach(key => {
                     const marker = `[SECTION:${key}]`;
@@ -1434,17 +1438,41 @@ ${fullText}
                     if (startIdx !== -1) {
                         const contentStart = startIdx + marker.length;
                         // 次のマーカーを探す
-                        let nextIdx = rawText.length;
+                        let nextMarkerIdx = rawText.length;
                         keys.forEach(k => {
                             const nm = `[SECTION:${k}]`;
                             const nIdx = rawText.indexOf(nm, contentStart);
-                            if (nIdx !== -1 && nIdx < nextIdx) nextIdx = nIdx;
+                            if (nIdx !== -1 && nIdx < nextMarkerIdx) nextMarkerIdx = nIdx;
                         });
-                        sectionsData[key] = rawText.substring(contentStart, nextIdx).trim();
+                        const snippet = rawText.substring(contentStart, nextMarkerIdx).trim();
+                        if (snippet) {
+                            // fullTextからこのスニペットを検索
+                            const pos = fullText.indexOf(snippet);
+                            if (pos !== -1) {
+                                anchors.push({ key, pos });
+                            } else {
+                                // 部分一致でリトライ（空白などを考慮して短めにする）
+                                const shortSnippet = snippet.substring(0, 50);
+                                const pos2 = fullText.indexOf(shortSnippet);
+                                if (pos2 !== -1) anchors.push({ key, pos: pos2 });
+                            }
+                        }
                     }
                 });
 
-                if (Object.keys(sectionsData).length === 0) throw new Error("セクションの抽出に失敗しました");
+                if (anchors.length === 0) throw new Error("セクションの特定に失敗しました");
+
+                // 位置でソート
+                anchors.sort((a, b) => a.pos - b.pos);
+
+                const sectionsData = {};
+                for (let i = 0; i < anchors.length; i++) {
+                    const current = anchors[i];
+                    const next = anchors[i + 1];
+                    const startPos = current.pos;
+                    const endPos = next ? next.pos : fullText.length;
+                    sectionsData[current.key] = fullText.substring(startPos, endPos).trim();
+                }
 
                 // Create new project with the data
                 createNewProject(`${file.name.split('.')[0]} (インポート)`);
