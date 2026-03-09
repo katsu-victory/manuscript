@@ -996,13 +996,7 @@
             if (useSearch) {
                 // Gemini 2.0 Flash grounding configuration
                 payload.tools = [{
-                    google_search_retrieval: {
-                        // mode/threshold is often required for valid 2.0 dynamic retrieval
-                        dynamic_retrieval_config: {
-                            mode: "DYNAMIC",
-                            dynamic_threshold: 0.3
-                        }
-                    }
+                    google_search: {}
                 }];
             }
 
