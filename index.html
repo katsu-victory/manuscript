@@ -811,12 +811,23 @@
 
         function updateUIState() {
             els.docTitleInput.value = documentState.title;
-            if (documentState.rules) {
-                els.ruleBadge.classList.remove('hidden'); els.sidebarRuleBadge.classList.remove('hidden');
-                els.btnApplyRule.classList.replace('bg-gray-100', 'bg-emerald-50'); els.btnApplyRule.classList.replace('text-gray-400', 'text-emerald-700'); els.btnApplyRule.classList.replace('border-gray-200', 'border-emerald-200');
+            const hasRules = !!documentState.rules;
+
+            // Badge visibility
+            els.ruleBadge.classList.toggle('hidden', !hasRules);
+            els.sidebarRuleBadge.classList.toggle('hidden', !hasRules);
+
+            // Apply Rule button styling
+            if (hasRules) {
+                els.btnApplyRule.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+                els.btnApplyRule.classList.remove('bg-gray-100', 'text-gray-400', 'border-gray-200');
+                els.btnApplyRule.title = "設定された規定を適用して修正します";
             } else {
-                els.ruleBadge.classList.add('hidden'); els.sidebarRuleBadge.classList.add('hidden');
+                els.btnApplyRule.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+                els.btnApplyRule.classList.add('bg-gray-100', 'text-gray-400', 'border-gray-200');
+                els.btnApplyRule.title = "投稿規定を設定すると有効になります";
             }
+
             renderRefList(); renderFigList(); renderNav(); switchSection(currentSectionId, false);
         }
 
@@ -914,8 +925,29 @@
         window.removeReference = (id) => { documentState.referenceMaterials = documentState.referenceMaterials.filter(r => r.id !== id); renderRefList(); triggerAutoSave(); };
 
         // --- Rules Setup ---
-        window.openRuleModal = () => { document.getElementById('rule-result-area').value = documentState.rules; if (documentState.rules) document.getElementById('rule-result-container').classList.remove('hidden'); openModal('rule-modal'); };
-        window.saveRules = () => { documentState.rules = document.getElementById('rule-result-area').value.trim(); updateUIState(); triggerAutoSave(); closeModal('rule-modal'); showToast('規定を保存・適用しました', 'success'); };
+        window.openRuleModal = () => {
+            document.getElementById('rule-url-input').value = '';
+            document.getElementById('rule-text-input').value = '';
+            document.getElementById('rule-result-area').value = documentState.rules || '';
+            if (documentState.rules) {
+                document.getElementById('rule-result-container').classList.remove('hidden');
+            } else {
+                document.getElementById('rule-result-container').classList.add('hidden');
+            }
+            openModal('rule-modal');
+        };
+        window.saveRules = () => {
+            let rules = document.getElementById('rule-result-area').value.trim();
+            // 解析結果が空で、直接入力欄にテキストがある場合はそちらを採用
+            if (!rules) {
+                rules = document.getElementById('rule-text-input').value.trim();
+            }
+            documentState.rules = rules;
+            updateUIState();
+            triggerAutoSave();
+            closeModal('rule-modal');
+            showToast(rules ? '規定を保存・適用しました' : '規定を解除しました', 'success');
+        };
 
         // --- Export & CSV ---
         window.openCsvModal = () => openModal('csv-modal');
